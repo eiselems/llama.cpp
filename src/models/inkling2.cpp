@@ -175,13 +175,37 @@ ggml_tensor * llama_model_inkling2::graph::clip(ggml_tensor * cur, ggml_tensor *
     return ggml_mul(ctx0, cur, ggml_clamp(ctx0, factor, 0.0f, 1.0f));
 }
 
+// the norm is per state, so the normalized blocks are built once and extended by one block at a time
+ggml_tensor * llama_model_inkling2::graph::normed_states(const std::vector<ggml_tensor *> & blocks, size_t n) {
+    if (n == 0) {
+        return nullptr;
+    }
+
+    const std::vector<ggml_tensor *> key(blocks.begin(), blocks.begin() + n);
+    if (auto it = normed_prefix.find(key); it != normed_prefix.end()) {
+        return it->second;
+    }
+
+    ggml_tensor *& block = normed_block[blocks[n - 1]];
+    if (!block) {
+        block = ggml_rms_norm(ctx0, ggml_reshape_3d(ctx0, blocks[n - 1], n_embd, 1, n_tokens), 1e-6f);
+    }
+
+    ggml_tensor * earlier = normed_states(blocks, n - 1);
+    ggml_tensor * states  = earlier ? ggml_concat(ctx0, block, earlier, 1) : block;
+
+    normed_prefix.emplace(key, states);
+
+    return states;
+}
+
 // attention over the depth: mix the earlier block outputs and cur with learned queries
 ggml_tensor * llama_model_inkling2::graph::mix(const std::vector<ggml_tensor *> & blocks, ggml_tensor * cur, ggml_tensor * query) {
-    ggml_tensor * states = ggml_reshape_3d(ctx0, cur, n_embd, 1, n_tokens);
-    for (ggml_tensor * block : blocks) {
-        states = ggml_concat(ctx0, ggml_reshape_3d(ctx0, block, n_embd, 1, n_tokens), states, 1);
+    // [blocks[n - 1], ..., blocks[0], cur]
+    ggml_tensor * states = ggml_rms_norm(ctx0, ggml_reshape_3d(ctx0, cur, n_embd, 1, n_tokens), 1e-6f);
+    if (ggml_tensor * earlier = normed_states(blocks, blocks.size())) {
+        states = ggml_concat(ctx0, earlier, states, 1);
     }
-    states = ggml_rms_norm(ctx0, states, 1e-6f);
 
     ggml_tensor * queries = ggml_repeat(ctx0, query, ggml_new_tensor_3d(ctx0, GGML_TYPE_F32, n_embd, query->ne[1], n_tokens));
 
@@ -283,9 +307,9 @@ ggml_tensor * llama_model_inkling2::graph::build_layer(int il, int ip, ggml_tens
     const int64_t n_embd_head  = hparams.n_embd_head_k(il);
     const int64_t n_embd_k_gqa = n_embd_head*n_head_kv;
 
-    // the message of controller ctrl, [n_embd, n_tokens]
+    // the message of controller ctrl, [n_embd, n_tokens], a strided view: its consumers take strided rows
     auto message = [&](int ctrl) {
-        return ggml_cont(ctx0, ggml_view_2d(ctx0, messages, n_embd, n_tokens, messages->nb[2], ctrl*messages->nb[1]));
+        return ggml_view_2d(ctx0, messages, n_embd, n_tokens, messages->nb[2], ctrl*messages->nb[1]);
     };
 
     ggml_tensor * state   = recr->mctx->get_r_l(il);
@@ -299,7 +323,7 @@ ggml_tensor * llama_model_inkling2::graph::build_layer(int il, int ip, ggml_tens
     if (layer.attn_res_query) {
         ggml_tensor * mixed = mix(blocks, cur, layer.attn_res_query);
         for (int j = 0; j < 3; ++j) {
-            inputs[j] = ggml_cont(ctx0, ggml_view_2d(ctx0, mixed, n_embd, n_tokens, mixed->nb[2], (is_swa ? 0 : j)*mixed->nb[1]));
+            inputs[j] = ggml_view_2d(ctx0, mixed, n_embd, n_tokens, mixed->nb[2], (is_swa ? 0 : j)*mixed->nb[1]);
         }
     }
 
