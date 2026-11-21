@@ -14,6 +14,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace {
@@ -23,6 +24,8 @@ namespace {
 // CRF (combined recency and frequency) = uses of an expert, decayed with a half-life of N tokens, retained across evictions
 // class = floor(log2(CRF)), at most n_class - 1; each slot is in the LRU list of the class, as of its last use
 // victim: an empty slot, or the least recently used slot of each list not in the current plan() with the max age/2^class
+// key_layer_of[il] is the layer whose keys, slot map, CRF and clock layer il uses: il itself, or with LLAMA_MOE_CACHE_DEDUP
+// the first layer of the group with the same expert tensors (the passes of a looped layer share one entry per expert)
 struct moe_cache_lru {
     static constexpr int   n_class  = 8; // floor(log2(1/(1 - 2^(-1/crf_half_life)))) = 7, class of CRF_max for half-life of 128
     static constexpr float crf_half_life = 128.0f; // tokens
@@ -47,6 +50,7 @@ struct moe_cache_lru {
     std::vector<float>   crf;      // [n_layer*n_expert]
     std::vector<int64_t> last_use; // [n_layer*n_expert] layer clock at the last use, -1 if not used
     std::vector<int64_t> clock;    // [n_layer] tokens seen by the layer (as added by plan() for each ubatch)
+    std::vector<int32_t> key_layer_of; // [n_layer] see above, the identity unless LLAMA_MOE_CACHE_DEDUP
 
     std::vector<uint32_t> seen; // [n_expert] seen[e] == seen_gen if expert e is selected by the current plan()
     uint32_t seen_gen = 0;
@@ -77,6 +81,10 @@ struct moe_cache_lru {
         crf.assign((size_t) n_layer*n_expert, 0.0f);
         last_use.assign((size_t) n_layer*n_expert, -1);
         clock.assign(n_layer, 0);
+        key_layer_of.resize(n_layer);
+        for (int32_t il = 0; il < n_layer; ++il) {
+            key_layer_of[il] = il;
+        }
         seen.assign(n_expert, 0);
     }
 
@@ -184,9 +192,12 @@ struct moe_cache_lru {
     // n_cpu(n) of the n misses are left to the CPU and read a zero slot on the device, they are not cached
     // a zero slot is used at most once per token, a miss that does not get one is cached instead
     // returns false if the ids select more distinct experts than there are slots
+    // il_app is the layer application of the lookup, its keys are those of il = key_layer_of[il_app]
+    // only the application il == il_app advances the clock, so a shared layer ages once per token like the others
     template <typename F>
-    bool plan(int32_t il, const int32_t * ids, size_t n_ids, int64_t n_tokens, int32_t n_used, int32_t n_zero, F && n_cpu,
+    bool plan(int32_t il_app, const int32_t * ids, size_t n_ids, int64_t n_tokens, int32_t n_used, int32_t n_zero, F && n_cpu,
             std::vector<fill> & fills, std::vector<fill> & cpu, size_t & n_hit) {
+        const int32_t il = key_layer_of[il_app];
         fills.clear();
         cpu.clear();
         n_hit = 0;
@@ -282,7 +293,12 @@ struct moe_cache_lru {
             move(s, class_of(key));
             fills.push_back({ e, s });
         }
-        clock[il] += n_tokens;
+        // assumes the key layer is the first application of the shared tensors in every graph (true for
+        // inkling2_loop: pass 1 uses il = physical layer, src/models/inkling2-loop.cpp:98-101); else the clock of a shared
+        // layer advances on a later pass, which changes only cache decisions, not results
+        if (il == il_app) {
+            clock[il] += n_tokens;
+        }
         return true;
     }
 };
@@ -337,6 +353,7 @@ struct llama_moe_cache::impl {
         int32_t id;                       // device
         std::vector<ggml_tensor *> ref;   // expert tensors of the first layer
         std::vector<int32_t> layers;
+        size_t n_phys = 0;                // layers with their own expert tensors (all of them unless LLAMA_MOE_CACHE_DEDUP)
         std::vector<ggml_tensor *> banks; // device storage of all slots, one per expert tensor
         size_t host_bytes = 0;
         int32_t n_slots = 0;
@@ -388,6 +405,12 @@ struct llama_moe_cache::impl {
     uint32_t cpu_share_q = 0; // cpu_share in 1/65536, integer so that a simulator can reproduce the rounding
     int32_t  n_zero    = 0; // zero slots per group
 
+    // LLAMA_MOE_CACHE_DEDUP: layers that share their expert tensors (the passes of a looped layer) share one cache entry per expert
+    // 1 (default): shared entries, the host experts and the budget count each tensor once; 0: one entry per layer;
+    // 2: shared entries, the host experts and the budget per layer as with 0 (the same slots as 0, to isolate the keying)
+    int32_t dedup = 1;
+    std::vector<int32_t> key_layer_of; // [n_layer] layer whose cache entries layer il uses, -1 if not cached
+
     // LLAMA_MOE_CACHE_TRACE: the selected experts of each slot lookup, for a simulator of the cache
     FILE * trace = nullptr;
 
@@ -419,6 +442,19 @@ struct llama_moe_cache::impl {
             throw std::runtime_error("MoE cache requires a MoE model");
         }
 
+        if (const char * v = getenv("LLAMA_MOE_CACHE_DEDUP"); v != nullptr && *v != '\0') {
+            dedup = std::clamp(atoi(v), 0, 2);
+        }
+        if (dedup > 0 && this->cpu_share > 0.0f) {
+            // the CPU part writes per-plan zero slots into the slot map, which a shared slot map would carry to the next pass
+            LLAMA_LOG_WARN("%s: LLAMA_MOE_CACHE_DEDUP is not supported with a CPU share of the misses, it is ignored\n", __func__);
+            dedup = 0;
+        }
+        key_layer_of.assign(model.layers.size(), -1);
+        // first layer of each group that reads an expert tensor, by group and tensor
+        std::map<std::pair<size_t, const ggml_tensor *>, int32_t> first_layer;
+        std::unordered_set<const ggml_tensor *> counted;
+
         // only cache layers that keep all of their experts in host memory, on the device the layer is assigned to
         for (size_t il = 0; il < model.layers.size(); ++il) {
             auto experts = llama_moe_cache_layer_experts(model.layers[il]);
@@ -438,7 +474,27 @@ struct llama_moe_cache::impl {
                 it->ref = experts;
             }
             it->layers.push_back(il);
+
+            // a layer that reads the same expert tensors as an earlier layer of the group uses the entries of that layer
+            key_layer_of[il] = (int32_t) il;
+            if (dedup > 0) {
+                const std::pair<size_t, const ggml_tensor *> fk = { (size_t) (it - groups.begin()), experts[0] };
+                const auto it_first = first_layer.find(fk);
+                if (it_first == first_layer.end()) {
+                    first_layer[fk] = (int32_t) il;
+                } else if (llama_moe_cache_layer_experts(model.layers[it_first->second]) == experts) {
+                    // same tensors in the same order
+                    key_layer_of[il] = it_first->second;
+                }
+            }
+            if (key_layer_of[il] == (int32_t) il) {
+                it->n_phys++;
+            }
+
             for (const ggml_tensor * t : experts) {
+                if (dedup == 1 && !counted.insert(t).second) {
+                    continue; // counted once, with the first layer that reads it
+                }
                 it->host_bytes         += ggml_nbytes(t);
                 devices[id].host_bytes += ggml_nbytes(t);
             }
@@ -505,7 +561,7 @@ struct llama_moe_cache::impl {
             const device & d = devices[g.id];
             const int32_t n_expert  = g.ref[0]->ne[2];
             const size_t  budget    = (size_t) ((double) size*d.split/split_sum*g.host_bytes/d.host_bytes);
-            const int32_t max_slots = g.layers.size()*n_expert;
+            const int32_t max_slots = (dedup == 1 ? g.n_phys : g.layers.size())*n_expert;
             while (g.n_slots < max_slots && alloc_size(g, g.n_slots + 1) <= budget) {
                 g.n_slots++;
             }
@@ -515,6 +571,9 @@ struct llama_moe_cache::impl {
                 continue;
             }
             g.lru.init(model.layers.size(), n_expert, g.n_slots);
+            for (int32_t il : g.layers) {
+                g.lru.key_layer_of[il] = key_layer_of[il];
+            }
             n_tensors[g.id] += g.ref.size()*(1 + g.layers.size());
             n_tensors_host  += g.layers.size()*(n_zero > 0 ? 3 : 1); // slot maps and CPU map
         }
@@ -608,6 +667,14 @@ struct llama_moe_cache::impl {
                         g.lru.slot_map[il] = slots;
                     }
                 }
+                // the layers that share entries read and upload the slot map data of their key layer, their own data is unused
+                // copy_experts (large batches with op offload) reads the key layer's slots through bindings[w].il, the last layer bound to w
+                // each keeps its own slot map tensor, so that each lookup is an input of its own split and gets its own copy callback
+                for (int32_t il : g.layers) {
+                    if (layers[il].slot_map != nullptr && g.lru.key_layer_of[il] != il) {
+                        g.lru.slot_map[il] = g.lru.slot_map[g.lru.key_layer_of[il]];
+                    }
+                }
             }
         }
 
@@ -627,9 +694,17 @@ struct llama_moe_cache::impl {
             LLAMA_LOG_INFO("%s: %10s MoE cache size = %8.2f MiB for %.2f MiB of host experts, %.0f%% of the misses on the CPU\n", __func__,
                 ggml_backend_buft_name(d.buft), d.buf_size/1024.0/1024.0, d.host_bytes/1024.0/1024.0, 100.0*cpu_share);
             for (const group & g : groups) {
-                if (g.id == (int32_t) id) {
+                if (g.id != (int32_t) id) {
+                    continue;
+                }
+                if (dedup == 0) {
                     LLAMA_LOG_INFO("%s: %2zu layers, %s: %5d slots (%.1f%%, %.1f tokens worth)\n", __func__,
                         g.layers.size(), ggml_type_name(g.ref.back()->type), g.n_slots, 100.0*g.n_slots/(g.layers.size()*g.ref[0]->ne[2]),
+                        (double) g.n_slots/(g.layers.size()*n_expert_used));
+                } else {
+                    // a share of the distinct experts; tokens worth = slots per expert lookup of one token over all applications
+                    LLAMA_LOG_INFO("%s: %2zu layers (%zu with their own experts, shared entries, mode %d), %s: %5d slots (%.1f%%, %.1f tokens worth)\n", __func__,
+                        g.layers.size(), g.n_phys, dedup, ggml_type_name(g.ref.back()->type), g.n_slots, 100.0*g.n_slots/(g.n_phys*g.ref[0]->ne[2]),
                         (double) g.n_slots/(g.layers.size()*n_expert_used));
                 }
             }
@@ -856,7 +931,11 @@ struct llama_moe_cache::impl {
         st.bytes  += bytes;
 
         // the next copy synchronizes the backend before it changes the slot map again
-        ggml_backend_tensor_set_async(backend, dst, l.slot_map->data, 0, ggml_nbytes(l.slot_map));
+        // (with shared entries, g.lru.slot_map[il] is the data of the key layer; the next copy of any layer of the group also
+        // synchronizes before plan() changes it, so this upload has completed before the data changes)
+        // relies on ggml_backend_synchronize above (ids read-back) completing the previous slot map upload
+        // of the key layer before plan() changes its data; a pageable-memory H2D copy may also be staged at once
+        ggml_backend_tensor_set_async(backend, dst, g.lru.slot_map[il], 0, ggml_nbytes(l.slot_map));
 
         return true;
     }
