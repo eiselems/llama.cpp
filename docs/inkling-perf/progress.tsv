@@ -16,3 +16,4 @@ B10	bench.py	bench.py baseline S10 (median of 6, 3 runs)	7526	688	735	36.9	27.4	
 B11	bench.py	bench.py baseline S11	7424	745	820	35.3	26.9	S11 via scripts/inkling/serve.sh
 B12	bench.py	bench.py baseline S12	7301	737	950	33.1	27.4	S12 via scripts/inkling/serve.sh
 E4	d0c94745	+ background cache fill (S13 = S10 + E4)	7526	689	734	37.8	29	LLAMA_EXPERT_PREFETCH=3 LLAMA_MOE_CACHE_ASYNC_FILL=1, S10 flags
+E2	1bf03dedd	+ prefetch skips cached experts (S14 = S11 + E2)	7424	858	912	35.9	28.1	LLAMA_EXPERT_PREFETCH=1 LLAMA_EXPERT_PREFETCH_SKIP=1, S11 flags
