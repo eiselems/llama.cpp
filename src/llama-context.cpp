@@ -3165,7 +3165,15 @@ bool llama_context::sched_copy_experts(ggml_backend_t backend, const ggml_tensor
     const int64_t n_expert    = src->ne[2];
     const size_t  expert_size = src->nb[2];
 
-    if (ids != st.ids || (int64_t) st.used.size() != n_expert) {
+    // LLAMA_EXPERT_COPY_NOSYNC=1: a large batch selects nearly every expert, so treat all as used instead of reading
+    // the ids back, which synchronizes the host with the device at every MoE layer and stops it from queueing ahead
+    static const bool nosync_large = [] { const char * v = getenv("LLAMA_EXPERT_COPY_NOSYNC"); return v && atoi(v) != 0; }();
+    if (nosync_large && ggml_nelements(ids) >= 4*n_expert) {
+        if (ids != st.ids || (int64_t) st.used.size() != n_expert) {
+            st.used.assign(n_expert, true);
+            st.ids = ids;
+        }
+    } else if (ids != st.ids || (int64_t) st.used.size() != n_expert) {
         st.ids_data.resize(ggml_nbytes(ids)/sizeof(int32_t));
         ggml_backend_tensor_get_async(backend, ids, st.ids_data.data(), 0, ggml_nbytes(ids));
         ggml_backend_synchronize(backend);
