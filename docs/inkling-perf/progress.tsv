@@ -7,3 +7,4 @@ S4	2ecddfadf	+ dedup with CPU share 0.7	7534	453.8	502.5	34.1	32.8	--fit off -ng
 S5	1410a556	preset: ub 1024 (balanced)	7758	582.4	685.8	34.1	32.1	--fit off -ngl all -cmoe -b 2048 -ub 1024 --moe-cache-mib 3400 --moe-cache-cpu-share 0.7
 S6	d2514c6ea	+ expert prefetch (opt-in), cache 2600	7753	672.9	798.5	31.4	29.8	LLAMA_EXPERT_PREFETCH=1 --fit off -ngl all -cmoe -b 2048 -ub 1024 --moe-cache-mib 2600 --moe-cache-cpu-share 0.7
 S7	d25dc474	prefetch + ub 2048, cache 2000 (max prefill)	7620	659.8	924.9	29.2	26.7	LLAMA_EXPERT_PREFETCH=1 --fit off -ngl all -cmoe -b 2048 -ub 2048 --moe-cache-mib 2000 --moe-cache-cpu-share 0.7
+S8	dee6c0f51	single-slot prefetch, cache 3400 (new balanced)	7692	632.4	723.9	33.9	31.8	LLAMA_EXPERT_PREFETCH=3 --fit off -ngl all -cmoe -b 2048 -ub 1024 --moe-cache-mib 3400 --moe-cache-cpu-share 0.7
