@@ -84,6 +84,7 @@ Theoretical ceilings (measured hardware, model bytes/FLOPs): [THEORY.md](THEORY.
 | E3: CPU-expert lookup on the CPU so the CPU part overlaps the cached experts (`LLAMA_MOE_CACHE_CPU_IDS_ON_CPU=1`), S10, branch `inkling-try-cpu-ids` | decode 36.4 vs controls 37.1 / 36.7 | neutral; the expert uploads, not the CPU part, are on the critical path |
 | E3b: E3 plus CPU share 0.85 / 0.95 | decode 37.2 / 36.6 vs 36.8 / 37.1 | neutral |
 | more CPU threads on S13 (`-t 8` / `-t 12`) | decode 36.5 / 35.5 vs 37.4 / 37.6 with `-t 6` | slower: the CPU expert part is RAM bound |
+| E5: this token's expert uploads over a second stream so CPU part and PCIe run in parallel (`LLAMA_MOE_CACHE_FILL_STREAM=1`), branch `inkling-try-split-path` | decode 36.1 / 35.1 vs S13 37.5 | slower: the scheduler queues the CPU part's input copy behind the uploads; needs a scheduler change |
 
 Plan for the next session: [NEXT.md](NEXT.md).
 
