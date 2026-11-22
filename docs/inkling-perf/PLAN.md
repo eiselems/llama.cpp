@@ -137,3 +137,12 @@ Ranked next levers:
 4. Scheduler: copy the CPU split's inputs before the expert phase / on another stream, then retry E5 (CPU + PCIe in
    parallel for the misses).
 5. Bias support in the vec kernel for decode attention (0.4 ms/token).
+
+### After the STATUS: next levers (2026-11-22 from 14:45)
+
+| time | experiment | result | verdict |
+|---|---|---|---|
+| 14:45 | microbenchmark of the CPU NVFP4 x Q8_0 kernel (AVX2), one expert matrix | 10.4 GB/s per thread, ~61 GB/s on 6 threads: the kernel is not the decode limit; a SIMD scale variant was slower (50 GB/s) | lever 1 as stated is wrong |
+| 14:50 | nsys CPU sampling of decode (S16) | OpenMP worker threads: ~62 % in `gomp_barrier_wait_end`, ~15 % in the NVFP4 kernel; main thread mostly waits in the CUDA driver. The CPU expert part costs ~4-5 ms/token in total; the GPU 16.5 ms | the bulk is GPU time, ~7 ms of it in ~3,000 small kernels |
+| 14:55-15:05 | OpenMP wait policy on S13: ctl / OMP_WAIT_POLICY=ACTIVE / GOMP_SPINCOUNT=INFINITE / ctl | c1 37.69 / 37.70 / 37.34 / 37.17 | **rejected**: neutral (the barrier time is idle waiting, not overhead) |
+| 15:15-15:40 | E6: indexed bias in the vec FA kernel for decode (`GGML_CUDA_FATTN_BIAS_VEC=1`), S13; ctl / vec / ctl / vec / ctl | c1 37.66 / 37.16 / 37.78 / 37.41 / 37.77; test-flash-attn-indexed-bias passes (max error 4.7e-09 vs 3.5e-05 for tile) | **rejected** (-1 %): nsys vec 0.78 ms/token vs tile 0.41 + dequantize 0.28 ms; with GQA 3 the vec kernel decodes the q4_0 K/V once per Q head. Branch `inkling-try-fattn-vec-bias` |
