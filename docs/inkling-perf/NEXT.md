@@ -70,3 +70,18 @@ a 72 MiB layer-input buffer), so the MoE cache has to shrink. See the README for
 - PR #32076 (MoE cache without syncs) crashes with dedup (illegal memory access) and gives no gain without it
   on Linux CUDA; parked on local branch `inkling-perf-32076-wip`.
 - Card-sampling quality eval (v1-v4) on this build: speed no longer blocks it.
+
+## Design: expert-range staging (smaller prefetch slots, keep the 3400 MiB cache)
+
+Goal: S6-level prefill (~670 / 800 t/s) with S5-level decode (34 t/s), i.e. prefetch without giving up ~790 MiB of cache.
+
+- Split each host expert tensor (gate_up, down) into K chunks of n_expert/K experts (K = 4: ~110 + ~86 MiB per chunk).
+- Two small slots per tensor kind (double buffering, ~400 MiB total instead of 790), each holding one chunk.
+- In the copy callback for tensor T: for chunk c = 0..K-1: wait "uploaded" of the slot holding chunk c, D2D that
+  expert range into dst (offset c*chunk_bytes), record "released", then queue the upload of the NEXT chunk (c+2 of T,
+  or the first chunks of the next tensor of the same kind) into the freed slot on the copy stream.
+- Both kinds are prefetched (the gate/up-only test showed that leaving down on the compute stream is worse than no
+  prefetch at all), only the slots get smaller.
+- Risk: with only 2 chunks in flight the copy stream may run behind compute; measure the hit rate with
+  LLAMA_EXPERT_PREFETCH_TRACE=1 and try K = 2 / 4 / 8.
+- Validate with scripts/inkling-bench.sh at -ub 1024, cache 3000-3400; success = pp > 582 / 686 and tg >= 33.
