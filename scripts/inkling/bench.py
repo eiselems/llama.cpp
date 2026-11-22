@@ -246,6 +246,8 @@ def run(cfg_path, long_ctx=None, skip_cn=False, reps=6):
         res["ok"] = True
     except Exception as e:
         res.update(ok=False, error=repr(e)); flags.append("REQ_FAIL")
+    if cfg.get("launch"):  # inkling: do not leave the last server of a queue running
+        stop_server()
     return finish(res, flags, watch)
 
 
