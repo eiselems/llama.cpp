@@ -456,11 +456,9 @@ struct llama_moe_cache::impl {
         if (const char * v = getenv("LLAMA_MOE_CACHE_DEDUP"); v != nullptr && *v != '\0') {
             dedup = std::clamp(atoi(v), 0, 2);
         }
-        if (dedup > 0 && this->cpu_share > 0.0f) {
-            // the CPU part writes per-plan zero slots into the slot map, which a shared slot map would carry to the next pass
-            LLAMA_LOG_WARN("%s: LLAMA_MOE_CACHE_DEDUP is not supported with a CPU share of the misses, it is ignored\n", __func__);
-            dedup = 0;
-        }
+        // dedup with a CPU share: a zero slot that a pass leaves in the shared slot map is only read again if a later pass
+        // selects that expert, and then plan() sees it as a miss (>= n_slots) and plans it anew. The zero slots hold zeros
+        // on the device and each application has its own CPU map, so the passes do not see each other's CPU experts.
         key_layer_of.assign(model.layers.size(), -1);
         // first layer of each group that reads an expert tensor, by group and tensor
         std::map<std::pair<size_t, const ggml_tensor *>, int32_t> first_layer;
