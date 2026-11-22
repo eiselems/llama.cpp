@@ -63,3 +63,13 @@ Takeaways:
   worth up to +58 %.
 - The number of ubatches, not the prompt length, sets the upload cost: a partial last ubatch costs a full upload.
 - Prefetch uploads experts the cache already holds; skipping them saves up to ~25 % of the bytes.
+
+## Corrections after profiling (2026-11-22, see PLAN.md)
+
+- Prefill at -ub 2048 is compute bound, not upload bound: nsys shows 3.97 s of GPU compute vs 3.34 s of uploads
+  (2.69 s of them overlapped) for a 4,777-token prompt. The GPU reaches ~26 % of FP16 peak (assumed 50 %); flash
+  attention in the tile kernel is 31 % of it. With the measured compute time the realistic ceiling there is
+  ~1,200 t/s, not 1,469. Measured best: 1,003 (S15).
+- Decode: the big GEMVs run at 79-86 % of bandwidth as assumed, but ~3,000 small kernels per token add ~7 ms that the
+  bandwidth model does not contain, and the CPU expert kernel at one token reaches ~20 GB/s, not the 48.6 GB/s RAM
+  bandwidth. Measured best: 38.6 t/s (S16) = 66 % of the 58.4 serial ceiling.
