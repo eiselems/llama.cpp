@@ -40,6 +40,7 @@ start)
         S14) env=(LLAMA_EXPERT_PREFETCH=1 LLAMA_EXPERT_PREFETCH_SKIP=1); flags=(-ub 1024 --moe-cache-mib 3200) ;;  # S11 + E2
         S15) env=(LLAMA_EXPERT_PREFETCH=1 LLAMA_EXPERT_PREFETCH_SKIP=1); flags=(-ub 2048 --moe-cache-mib 2650) ;;  # S12 + E2
         S16) env=(LLAMA_EXPERT_PREFETCH=3 LLAMA_MOE_CACHE_ASYNC_FILL=1); flags=(-ub 512 --moe-cache-mib 3950) ;;   # max decode: S13 at -ub 512, bigger cache, half the prefill
+        S17) env=(LLAMA_EXPERT_PREFETCH=1 LLAMA_EXPERT_PREFETCH_SKIP=1 GGML_CUDA_FATTN_BIAS_MMA=1); flags=(-ub 2048 --moe-cache-mib 2650) ;;  # S15 + MMA bias
         *)   echo "unknown preset $preset" >&2; exit 1 ;;
     esac
     # extra args after the preset override the preset (llama.cpp: the last flag wins); EXTRA_ENV adds env vars
