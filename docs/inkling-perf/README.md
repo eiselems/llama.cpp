@@ -26,6 +26,9 @@ The same numbers as a table: [progress-table.md](progress-table.md) (raw: [progr
 Recommended everyday preset:
 `--fit off -ngl all -cmoe -b 2048 -ub 1024 --moe-cache-mib 3400 --moe-cache-cpu-share 0.7 -fa on -ctk q8_0 -ctv q8_0 -c 32768`
 
+Prefill-heavy mode (merged, opt-in, step S6): `LLAMA_EXPERT_PREFETCH=1` with `--moe-cache-mib 2600` (the two
+staging slots need ~790 MiB) = 672.9 / 798.5 t/s prefill, 31.4 / 29.8 t/s decode.
+
 ## Tried and not kept
 
 | what | result | why |
@@ -33,7 +36,6 @@ Recommended everyday preset:
 | PR #32752 (mask in chunks) | not applied | superseded by #32740 (bias inside flash attention) |
 | PR #32076 (MoE cache without syncs) | crashes with dedup (illegal memory access); without dedup 19.7 vs 20.0 t/s | no gain on Linux CUDA, conflicts with dedup; local branch `inkling-perf-32076-wip` |
 | -ub 4096 | 522 / 730 t/s prefill, 26.4 t/s decode at cache 1600; cache 2000 OOM | compute buffer too big for 8 GB |
-| expert upload prefetch on a 2nd stream (prototype, branch `inkling-prefetch-try`) | 1k: 561.7 t/s (no gain); 4.8k: assert in staging slot sizing | see NEXT.md |
 | DSpark speculative decoding (PR #32218 + #32773), draft n 3 / 2, cache 2400 | 23.5 / 31.3 t/s decode vs 34.1 without; acceptance 44-55 % at T=1 | the draft needs ~0.5 GiB VRAM (smaller MoE cache), and 3-4 token verification batches select more experts (more misses); local branch `inkling-dspark-try` |
 
 Plan for the next session: [NEXT.md](NEXT.md).
