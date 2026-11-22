@@ -326,6 +326,17 @@ static bool llama_moe_cache_same_layout(const std::vector<ggml_tensor *> & a, co
     return true;
 }
 
+// the tensor that holds the data: a looped layer's later passes read views of its weights (inkling2_loop)
+static const ggml_tensor * llama_moe_cache_base(const ggml_tensor * t) {
+    return t->view_src != nullptr ? t->view_src : t;
+}
+
+// the same tensors in the same order, a view counting as the tensor it views
+static bool llama_moe_cache_same_bases(const std::vector<ggml_tensor *> & a, const std::vector<ggml_tensor *> & b) {
+    return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin(),
+        [](const ggml_tensor * x, const ggml_tensor * y) { return llama_moe_cache_base(x) == llama_moe_cache_base(y); });
+}
+
 static bool llama_moe_cache_is_host_weight(const ggml_tensor * t) {
     return t->buffer != nullptr &&
         ggml_backend_buffer_get_usage(t->buffer) == GGML_BACKEND_BUFFER_USAGE_WEIGHTS &&
@@ -478,11 +489,11 @@ struct llama_moe_cache::impl {
             // a layer that reads the same expert tensors as an earlier layer of the group uses the entries of that layer
             key_layer_of[il] = (int32_t) il;
             if (dedup > 0) {
-                const std::pair<size_t, const ggml_tensor *> fk = { (size_t) (it - groups.begin()), experts[0] };
+                const std::pair<size_t, const ggml_tensor *> fk = { (size_t) (it - groups.begin()), llama_moe_cache_base(experts[0]) };
                 const auto it_first = first_layer.find(fk);
                 if (it_first == first_layer.end()) {
                     first_layer[fk] = (int32_t) il;
-                } else if (llama_moe_cache_layer_experts(model.layers[it_first->second]) == experts) {
+                } else if (llama_moe_cache_same_bases(llama_moe_cache_layer_experts(model.layers[it_first->second]), experts)) {
                     // same tensors in the same order
                     key_layer_of[il] = it_first->second;
                 }
@@ -492,7 +503,7 @@ struct llama_moe_cache::impl {
             }
 
             for (const ggml_tensor * t : experts) {
-                if (dedup == 1 && !counted.insert(t).second) {
+                if (dedup == 1 && !counted.insert(llama_moe_cache_base(t)).second) {
                     continue; // counted once, with the first layer that reads it
                 }
                 it->host_bytes         += ggml_nbytes(t);

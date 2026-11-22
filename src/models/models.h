@@ -3,6 +3,7 @@
 #include "llama-model.h"
 #include "llama-graph.h"
 #include "llama-model-loader.h"
+#include "ggml-cpp.h"
 
 // note: almost all graphs require at least sqrtf, so include cmath globally
 #include <cmath>
@@ -2566,6 +2567,7 @@ struct llama_model_inkling2_loop : public llama_model_inkling2 {
     void load_arch_hparams(llama_model_loader & ml) override;
     void load_arch_tensors(llama_model_loader & ml) override;
     void post_arch_tensors(llama_model_loader & ml) override;
+    void post_load_tensors() override;
 
     int n_layer_phys() const override { return n_phys; }
     int layer_phys(int il) const;
@@ -2579,6 +2581,9 @@ struct llama_model_inkling2_loop : public llama_model_inkling2 {
 
     // indexed by physical layer - core_start
     std::vector<loop_layer> loop_layers;
+
+    // views of the host weights of the core layers, for their later passes (see post_load_tensors)
+    ggml_context_ptr ctx_loop_views;
 
     struct graph : public llama_model_inkling2::graph {
         graph(const llm_graph_params & params);
