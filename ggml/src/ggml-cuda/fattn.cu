@@ -216,7 +216,7 @@ static void ggml_cuda_flash_attn_ext_mma_f16_switch_ncols2(ggml_backend_cuda_con
     // Edge cases like no mask, ALiBi, unpadded K/V, or misaligned addresses for large data transfers
     //     are put into the template specialization without GQA optimizations.
     // a mask with a head dimension is not shared by the Q heads of a K/V head
-    bool use_gqa_opt = mask && mask->ne[2] == 1 && max_bias == 0.0f && n_kv % FATTN_KQ_STRIDE == 0;
+    bool use_gqa_opt = mask && mask->ne[2] == 1 && max_bias == 0.0f && n_kv % FATTN_KQ_STRIDE == 0 && !dst->src[6];
     for (const ggml_tensor * t : {Q, K, V, mask}) {
         if (t == nullptr || ggml_is_quantized(t->type)) {
             continue;
@@ -671,6 +671,12 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
 
     if (ggml_flash_attn_ext_has_indexed_bias(dst)) {
         const float softcap = ggml_get_op_params_f32(dst, 2);
+        // GGML_CUDA_FATTN_BIAS_MMA=1: several queries with the indexed bias on the MMA kernel instead of the tile kernel
+        static const bool bias_mma = [] { const char * v = getenv("GGML_CUDA_FATTN_BIAS_MMA"); return v && atoi(v) != 0; }();
+        if (bias_mma && Q->ne[1] > 1 && (Q->ne[0] == 64 || Q->ne[0] == 128) && softcap == 0.0f &&
+                GGML_CUDA_CC_IS_NVIDIA(cc) && turing_mma_available(cc) && K->ne[1] % FATTN_KQ_STRIDE == 0) {
+            return BEST_FATTN_KERNEL_MMA_F16;
+        }
         return (Q->ne[0] == 128 || (Q->ne[0] == 64 && softcap == 0.0f)) ? BEST_FATTN_KERNEL_TILE : BEST_FATTN_KERNEL_NONE;
     }
 
