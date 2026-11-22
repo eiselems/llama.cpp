@@ -63,7 +63,7 @@ out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W
        f'aria-label="Inkling-2-Mini prefill and decode speed per optimization step">',
        f'<style>{CSS}</style>', f'<rect class="bg" width="{W}" height="{H}"/>',
        f'<text class="title" x="{PAD_L}" y="26">Inkling-2-Mini on RTX 3070 8 GB - llama.cpp fork, per optimization step</text>',
-       f'<text x="{PAD_L}" y="44">tokens/s, higher is better. UD-Q4_K_M, 32k ctx, q8_0 KV (q4_0 in S10-S12), experts in RAM. Hover a point for the exact value.</text>']
+       f'<text x="{PAD_L}" y="44">tokens/s, higher is better. UD-Q4_K_M, 32k ctx, q8_0 KV (q4_0 from S10). From B10: bench.py, decode = median of 6 prompts, 2nd decode line = after a 30k prompt.</text>']
 
 def panel(y0, title, keys, names, unit_note):
     vals = [f(r[k]) for r in rows for k in keys]
@@ -99,7 +99,7 @@ def panel(y0, title, keys, names, unit_note):
 y_pp = TOP + 30
 panel(y_pp, 'Prefill (prompt processing)', ['pp1k', 'pp5k'], ['1k prompt', '4.8k prompt'], '')
 y_tg = y_pp + PANEL_H + GAP
-panel(y_tg, 'Decode (token generation, 128 tokens)', ['tg1k', 'tg5k'], ['after 1k', 'after 4.8k'], '')
+panel(y_tg, 'Decode (tokens/s; S rows: 128 tokens after 1k / 4.8k prompts; B/E rows: see subtitle)', ['tg1k', 'tg5k'], ['after 1k', 'after 4.8k'], '')
 
 # step labels under the lower panel, rotated
 import textwrap

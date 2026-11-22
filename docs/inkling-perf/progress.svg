@@ -25,7 +25,7 @@ text { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fil
 </style>
 <rect class="bg" width="960" height="676"/>
 <text class="title" x="64" y="26">Inkling-2-Mini on RTX 3070 8 GB - llama.cpp fork, per optimization step</text>
-<text x="64" y="44">tokens/s, higher is better. UD-Q4_K_M, 32k ctx, q8_0 KV (q4_0 in S10-S12), experts in RAM. Hover a point for the exact value.</text>
+<text x="64" y="44">tokens/s, higher is better. UD-Q4_K_M, 32k ctx, q8_0 KV (q4_0 from S10). From B10: bench.py, decode = median of 6 prompts, 2nd decode line = after a 30k prompt.</text>
 <text class="ptitle" x="64" y="98">Prefill (prompt processing)</text>
 <line class="base" x1="64" x2="840" y1="328.0" y2="328.0"/>
 <text class="tick" x="56" y="332.0" text-anchor="end">0</text>
@@ -74,7 +74,7 @@ text { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fil
 <circle class="m2" cx="815.8" cy="160.8" r="5"><title>B12 bench.py baseline S12 (bench.py): 4.8k prompt 950 t/s, VRAM 7301 MiB</title></circle>
 <text class="val" x="825.8" y="154.8">950</text>
 <text class="tick" x="840" y="98" text-anchor="end">1k prompt: 57.6 -> 737 (12.8x)</text>
-<text class="ptitle" x="64" y="376">Decode (token generation, 128 tokens)</text>
+<text class="ptitle" x="64" y="376">Decode (tokens/s; S rows: 128 tokens after 1k / 4.8k prompts; B/E rows: see subtitle)</text>
 <line class="base" x1="64" x2="840" y1="606.0" y2="606.0"/>
 <text class="tick" x="56" y="610.0" text-anchor="end">0</text>
 <line class="grid" x1="64" x2="840" y1="551.0" y2="551.0"/>
