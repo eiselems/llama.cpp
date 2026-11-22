@@ -37,19 +37,21 @@ text { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fil
 <text class="tick" x="56" y="167.0" text-anchor="end">750</text>
 <line class="grid" x1="64" x2="840" y1="108.0" y2="108.0"/>
 <text class="tick" x="56" y="112.0" text-anchor="end">1000</text>
-<polyline class="l1" points="161.0,315.3 355.0,312.4 549.0,311.7 743.0,232.4"/>
-<circle class="m1" cx="161.0" cy="315.3" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): 1k prompt 57.6 t/s, VRAM 6307 MiB</title></circle>
-<circle class="m1" cx="355.0" cy="312.4" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): 1k prompt 70.7 t/s, VRAM 6596 MiB</title></circle>
-<circle class="m1" cx="549.0" cy="311.7" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): 1k prompt 74.1 t/s, VRAM 6420 MiB</title></circle>
-<circle class="m1" cx="743.0" cy="232.4" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): 1k prompt 434.4 t/s, VRAM 7441 MiB</title></circle>
-<text class="val" x="753.0" y="246.4">434.4</text>
-<polyline class="l2" points="161.0,315.6 355.0,311.0 549.0,310.1 743.0,217.7"/>
-<circle class="m2" cx="161.0" cy="315.6" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): 4.8k prompt 56.4 t/s, VRAM 6307 MiB</title></circle>
-<circle class="m2" cx="355.0" cy="311.0" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): 4.8k prompt 77.1 t/s, VRAM 6596 MiB</title></circle>
-<circle class="m2" cx="549.0" cy="310.1" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): 4.8k prompt 81.5 t/s, VRAM 6420 MiB</title></circle>
-<circle class="m2" cx="743.0" cy="217.7" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): 4.8k prompt 501.3 t/s, VRAM 7441 MiB</title></circle>
-<text class="val" x="753.0" y="211.7">501.3</text>
-<text class="tick" x="840" y="98" text-anchor="end">1k prompt: 57.6 -> 434.4 (7.5x)</text>
+<polyline class="l1" points="141.6,315.3 296.8,312.4 452.0,311.7 607.2,232.4 762.4,228.2"/>
+<circle class="m1" cx="141.6" cy="315.3" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): 1k prompt 57.6 t/s, VRAM 6307 MiB</title></circle>
+<circle class="m1" cx="296.8" cy="312.4" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): 1k prompt 70.7 t/s, VRAM 6596 MiB</title></circle>
+<circle class="m1" cx="452.0" cy="311.7" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): 1k prompt 74.1 t/s, VRAM 6420 MiB</title></circle>
+<circle class="m1" cx="607.2" cy="232.4" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): 1k prompt 434.4 t/s, VRAM 7441 MiB</title></circle>
+<circle class="m1" cx="762.4" cy="228.2" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): 1k prompt 453.8 t/s, VRAM 7534 MiB</title></circle>
+<text class="val" x="772.4" y="242.2">453.8</text>
+<polyline class="l2" points="141.6,315.6 296.8,311.0 452.0,310.1 607.2,217.7 762.4,217.5"/>
+<circle class="m2" cx="141.6" cy="315.6" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): 4.8k prompt 56.4 t/s, VRAM 6307 MiB</title></circle>
+<circle class="m2" cx="296.8" cy="311.0" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): 4.8k prompt 77.1 t/s, VRAM 6596 MiB</title></circle>
+<circle class="m2" cx="452.0" cy="310.1" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): 4.8k prompt 81.5 t/s, VRAM 6420 MiB</title></circle>
+<circle class="m2" cx="607.2" cy="217.7" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): 4.8k prompt 501.3 t/s, VRAM 7441 MiB</title></circle>
+<circle class="m2" cx="762.4" cy="217.5" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): 4.8k prompt 502.5 t/s, VRAM 7534 MiB</title></circle>
+<text class="val" x="772.4" y="211.5">502.5</text>
+<text class="tick" x="840" y="98" text-anchor="end">1k prompt: 57.6 -> 453.8 (7.9x)</text>
 <text class="ptitle" x="64" y="376">Decode (token generation, 128 tokens)</text>
 <line class="base" x1="64" x2="840" y1="606.0" y2="606.0"/>
 <text class="tick" x="56" y="610.0" text-anchor="end">0</text>
@@ -61,31 +63,37 @@ text { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fil
 <text class="tick" x="56" y="445.0" text-anchor="end">37.5</text>
 <line class="grid" x1="64" x2="840" y1="386.0" y2="386.0"/>
 <text class="tick" x="56" y="390.0" text-anchor="end">50</text>
-<polyline class="l1" points="161.0,526.8 355.0,497.3 549.0,485.4 743.0,473.6"/>
-<circle class="m1" cx="161.0" cy="526.8" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): after 1k 18 t/s, VRAM 6307 MiB</title></circle>
-<circle class="m1" cx="355.0" cy="497.3" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): after 1k 24.7 t/s, VRAM 6596 MiB</title></circle>
-<circle class="m1" cx="549.0" cy="485.4" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): after 1k 27.4 t/s, VRAM 6420 MiB</title></circle>
-<circle class="m1" cx="743.0" cy="473.6" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): after 1k 30.1 t/s, VRAM 7441 MiB</title></circle>
-<text class="val" x="753.0" y="467.6">30.1</text>
-<polyline class="l2" points="161.0,529.9 355.0,499.1 549.0,486.8 743.0,478.8"/>
-<circle class="m2" cx="161.0" cy="529.9" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): after 4.8k 17.3 t/s, VRAM 6307 MiB</title></circle>
-<circle class="m2" cx="355.0" cy="499.1" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): after 4.8k 24.3 t/s, VRAM 6596 MiB</title></circle>
-<circle class="m2" cx="549.0" cy="486.8" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): after 4.8k 27.1 t/s, VRAM 6420 MiB</title></circle>
-<circle class="m2" cx="743.0" cy="478.8" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): after 4.8k 28.9 t/s, VRAM 7441 MiB</title></circle>
-<text class="val" x="753.0" y="492.8">28.9</text>
-<text class="tick" x="840" y="376" text-anchor="end">after 1k: 18 -> 30.1 (1.7x)</text>
-<text class="ptitle" x="161.0" y="622" text-anchor="middle" style="font-size:12px">S0</text>
-<text class="tick" x="161.0" y="636" text-anchor="middle">upstream master (no-op-offload,</text>
-<text class="tick" x="161.0" y="649" text-anchor="middle">ub32, cache 2800)</text>
-<text class="ptitle" x="355.0" y="622" text-anchor="middle" style="font-size:12px">S1</text>
-<text class="tick" x="355.0" y="636" text-anchor="middle">+ MoE cache dedup (adishik</text>
-<text class="tick" x="355.0" y="649" text-anchor="middle">65dd939f)</text>
-<text class="ptitle" x="549.0" y="622" text-anchor="middle" style="font-size:12px">S2</text>
-<text class="tick" x="549.0" y="636" text-anchor="middle">+ fused glue ops + FA bias</text>
-<text class="tick" x="549.0" y="649" text-anchor="middle">(#32740), same flags</text>
-<text class="ptitle" x="743.0" y="622" text-anchor="middle" style="font-size:12px">S3</text>
-<text class="tick" x="743.0" y="636" text-anchor="middle">op-offload on (views fix),</text>
-<text class="tick" x="743.0" y="649" text-anchor="middle">ub512, cache 3400</text>
+<polyline class="l1" points="141.6,526.8 296.8,497.3 452.0,485.4 607.2,473.6 762.4,456.0"/>
+<circle class="m1" cx="141.6" cy="526.8" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): after 1k 18 t/s, VRAM 6307 MiB</title></circle>
+<circle class="m1" cx="296.8" cy="497.3" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): after 1k 24.7 t/s, VRAM 6596 MiB</title></circle>
+<circle class="m1" cx="452.0" cy="485.4" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): after 1k 27.4 t/s, VRAM 6420 MiB</title></circle>
+<circle class="m1" cx="607.2" cy="473.6" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): after 1k 30.1 t/s, VRAM 7441 MiB</title></circle>
+<circle class="m1" cx="762.4" cy="456.0" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): after 1k 34.1 t/s, VRAM 7534 MiB</title></circle>
+<text class="val" x="772.4" y="450.0">34.1</text>
+<polyline class="l2" points="141.6,529.9 296.8,499.1 452.0,486.8 607.2,478.8 762.4,461.7"/>
+<circle class="m2" cx="141.6" cy="529.9" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): after 4.8k 17.3 t/s, VRAM 6307 MiB</title></circle>
+<circle class="m2" cx="296.8" cy="499.1" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): after 4.8k 24.3 t/s, VRAM 6596 MiB</title></circle>
+<circle class="m2" cx="452.0" cy="486.8" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): after 4.8k 27.1 t/s, VRAM 6420 MiB</title></circle>
+<circle class="m2" cx="607.2" cy="478.8" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): after 4.8k 28.9 t/s, VRAM 7441 MiB</title></circle>
+<circle class="m2" cx="762.4" cy="461.7" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): after 4.8k 32.8 t/s, VRAM 7534 MiB</title></circle>
+<text class="val" x="772.4" y="475.7">32.8</text>
+<text class="tick" x="840" y="376" text-anchor="end">after 1k: 18 -> 34.1 (1.9x)</text>
+<text class="ptitle" x="141.6" y="622" text-anchor="middle" style="font-size:12px">S0</text>
+<text class="tick" x="141.6" y="636" text-anchor="middle">upstream master (no-op-</text>
+<text class="tick" x="141.6" y="649" text-anchor="middle">offload, ub32, cache</text>
+<text class="tick" x="141.6" y="662" text-anchor="middle">2800)</text>
+<text class="ptitle" x="296.8" y="622" text-anchor="middle" style="font-size:12px">S1</text>
+<text class="tick" x="296.8" y="636" text-anchor="middle">+ MoE cache dedup</text>
+<text class="tick" x="296.8" y="649" text-anchor="middle">(adishik 65dd939f)</text>
+<text class="ptitle" x="452.0" y="622" text-anchor="middle" style="font-size:12px">S2</text>
+<text class="tick" x="452.0" y="636" text-anchor="middle">+ fused glue ops + FA</text>
+<text class="tick" x="452.0" y="649" text-anchor="middle">bias (#32740), same flags</text>
+<text class="ptitle" x="607.2" y="622" text-anchor="middle" style="font-size:12px">S3</text>
+<text class="tick" x="607.2" y="636" text-anchor="middle">op-offload on (views</text>
+<text class="tick" x="607.2" y="649" text-anchor="middle">fix), ub512, cache 3400</text>
+<text class="ptitle" x="762.4" y="622" text-anchor="middle" style="font-size:12px">S4</text>
+<text class="tick" x="762.4" y="636" text-anchor="middle">+ dedup with CPU share</text>
+<text class="tick" x="762.4" y="649" text-anchor="middle">0.7</text>
 <line class="l1" x1="64" x2="86" y1="64" y2="64"/>
 <circle class="m1" cx="75" cy="64" r="4"/>
 <text x="92" y="68">1k-token prompt</text>
