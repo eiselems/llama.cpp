@@ -12,3 +12,4 @@
 | S9 | prefetch ub 2048, cache 2400 (max prefill, light desktop) | `aff1063b1` | 7504 | 664.5 | 934.5 | 31.1 | 28.5 |
 | S10 | balanced + q4_0 KV, cache 3650 | `dafda2ad7` | 7604 | 637.5 | 723.9 | 35.2 | 33 |
 | S11 | 2-slot prefetch + q4_0 KV, cache 3200 | `355ff0d1d` | 7502 | 682.2 | 802.2 | 33.4 | 31.6 |
+| S12 | max prefill + q4_0 KV, ub 2048, cache 2650 | `6b6115871` | 7382 | 676.2 | 932 | 32 | 27.5 |

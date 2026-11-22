@@ -11,3 +11,4 @@ S8	dee6c0f51	single-slot prefetch, cache 3400 (new balanced)	7692	632.4	723.9	33
 S9	aff1063b1	prefetch ub 2048, cache 2400 (max prefill, light desktop)	7504	664.5	934.5	31.1	28.5	LLAMA_EXPERT_PREFETCH=1 --fit off -ngl all -cmoe -b 2048 -ub 2048 --moe-cache-mib 2400 --moe-cache-cpu-share 0.7
 S10	dafda2ad7	balanced + q4_0 KV, cache 3650	7604	637.5	723.9	35.2	33	LLAMA_EXPERT_PREFETCH=3 --fit off -ngl all -cmoe -b 2048 -ub 1024 --moe-cache-mib 3650 --moe-cache-cpu-share 0.7 -ctk q4_0 -ctv q4_0
 S11	355ff0d1d	2-slot prefetch + q4_0 KV, cache 3200	7502	682.2	802.2	33.4	31.6	LLAMA_EXPERT_PREFETCH=1 --fit off -ngl all -cmoe -b 2048 -ub 1024 --moe-cache-mib 3200 --moe-cache-cpu-share 0.7 -ctk q4_0 -ctv q4_0
+S12	6b6115871	max prefill + q4_0 KV, ub 2048, cache 2650	7382	676.2	932	32	27.5	LLAMA_EXPERT_PREFETCH=1 --fit off -ngl all -cmoe -b 2048 -ub 2048 --moe-cache-mib 2650 --moe-cache-cpu-share 0.7 -ctk q4_0 -ctv q4_0
