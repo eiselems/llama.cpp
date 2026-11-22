@@ -419,6 +419,11 @@ struct llama_moe_cache::impl {
     std::vector<pending_fill> pending;
     bool async_fill = false;
     size_t n_async_fill = 0;
+    // LLAMA_MOE_CACHE_FILL_STREAM=1: the misses that are uploaded for this token go over the fill stream; only the
+    // device stream waits for them (event), so the host goes on to the CPU part while they upload
+    bool fill_stream = false;
+    size_t n_fill_stream = 0;
+    std::vector<moe_cache_lru::fill> now_fills;
 
     std::vector<device> devices;
     std::vector<group> groups;
@@ -473,6 +478,9 @@ struct llama_moe_cache::impl {
 
         if (const char * v = getenv("LLAMA_MOE_CACHE_ASYNC_FILL"); v != nullptr && atoi(v) != 0) {
             async_fill = true;
+        }
+        if (const char * v = getenv("LLAMA_MOE_CACHE_FILL_STREAM"); v != nullptr && atoi(v) != 0) {
+            fill_stream = true;
         }
         if (const char * v = getenv("LLAMA_MOE_CACHE_DEDUP"); v != nullptr && *v != '\0') {
             dedup = std::clamp(atoi(v), 0, 2);
@@ -786,6 +794,9 @@ struct llama_moe_cache::impl {
 
     ~impl() {
         log_stats();
+        if (n_fill_stream > 0) {
+            LLAMA_LOG_INFO("llama_moe_cache: %zu experts uploaded over the fill stream\n", n_fill_stream);
+        }
         if (n_async_fill > 0) {
             LLAMA_LOG_INFO("llama_moe_cache: %zu experts filled in the background\n", n_async_fill);
         }
@@ -972,6 +983,13 @@ struct llama_moe_cache::impl {
             GGML_ABORT("the MoE cache is too small for the experts selected in layer %d", il);
         }
 
+        // fill stream (decode only): this token's uploads leave the device stream, which only waits for them
+        now_fills.clear();
+        if (fill_stream && sel->src[0]->ne[1] == 1 && !fills.empty() && ensure_fill_backend(g.id)) {
+            now_fills.swap(fills);
+            n_fill_stream += now_fills.size();
+        }
+
         // background fill (decode only: one token, so the zero slots are simply the next free ones after the CPU experts)
         bg_fills.clear();
         if (async_fill && has_cpu && share_q > 0 && sel->src[0]->ne[1] == 1 && !fills.empty() && ensure_fill_backend(g.id)) {
@@ -1022,6 +1040,30 @@ struct llama_moe_cache::impl {
             }
         }
 
+        if (!now_fills.empty()) {
+            device & d = devices[g.id];
+            // the uploads overwrite slots whose previous experts earlier graphs may still read: wait for those
+            ggml_backend_event_record(d.ev_compute, backend);
+            ggml_backend_event_wait(d.fill_backend, d.ev_compute);
+            for (size_t ip = 0; ip < l.experts.size(); ++ip) {
+                const ggml_tensor * w    = l.experts[ip];
+                ggml_tensor       * bank = g.banks[ip];
+                const size_t expert_size = w->nb[2];
+                for (size_t i = 0; i < now_fills.size();) {
+                    size_t n = 1;
+                    while (i + n < now_fills.size() && now_fills[i + n].expert == now_fills[i].expert + (int32_t) n && now_fills[i + n].slot == now_fills[i].slot + (int32_t) n) {
+                        n++;
+                    }
+                    ggml_backend_tensor_set_async(d.fill_backend, bank, (const uint8_t *) w->data + now_fills[i].expert*expert_size, now_fills[i].slot*expert_size, n*expert_size);
+                    bytes += n*expert_size;
+                    i += n;
+                }
+            }
+            ggml_backend_event_record(d.ev_fill, d.fill_backend);
+            // the device computes the cached experts (which read these slots) only after the uploads; the host does not wait
+            ggml_backend_event_wait(backend, d.ev_fill);
+        }
+
         if (!bg_fills.empty()) {
             device & d = devices[g.id];
             // the fill overwrites slots whose previous experts earlier graphs may still read: wait for those
@@ -1041,7 +1083,7 @@ struct llama_moe_cache::impl {
 
         stats & st = ids.size() <= (size_t) 8*n_expert_used ? stats_small : stats_large;
         st.hits   += n_hit;
-        st.misses += fills.size() + cpu.size();
+        st.misses += fills.size() + cpu.size() + now_fills.size();
         st.cpu    += cpu.size();
         st.bytes  += bytes;
 
