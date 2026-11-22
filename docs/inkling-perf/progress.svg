@@ -37,25 +37,27 @@ text { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fil
 <text class="tick" x="56" y="167.0" text-anchor="end">750</text>
 <line class="grid" x1="64" x2="840" y1="108.0" y2="108.0"/>
 <text class="tick" x="56" y="112.0" text-anchor="end">1000</text>
-<polyline class="l1" points="119.4,315.3 230.3,312.4 341.1,311.7 452.0,232.4 562.9,228.2 673.7,199.9 784.6,180.0"/>
-<circle class="m1" cx="119.4" cy="315.3" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): 1k prompt 57.6 t/s, VRAM 6307 MiB</title></circle>
-<circle class="m1" cx="230.3" cy="312.4" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): 1k prompt 70.7 t/s, VRAM 6596 MiB</title></circle>
-<circle class="m1" cx="341.1" cy="311.7" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): 1k prompt 74.1 t/s, VRAM 6420 MiB</title></circle>
-<circle class="m1" cx="452.0" cy="232.4" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): 1k prompt 434.4 t/s, VRAM 7441 MiB</title></circle>
-<circle class="m1" cx="562.9" cy="228.2" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): 1k prompt 453.8 t/s, VRAM 7534 MiB</title></circle>
-<circle class="m1" cx="673.7" cy="199.9" r="5"><title>S5 preset: ub 1024 (balanced) (1410a556): 1k prompt 582.4 t/s, VRAM 7758 MiB</title></circle>
-<circle class="m1" cx="784.6" cy="180.0" r="5"><title>S6 LLAMA_EXPERT_PREFETCH=1 (prefill-heavy), cache 2600 (d2514c6ea): 1k prompt 672.9 t/s, VRAM 7753 MiB</title></circle>
-<text class="val" x="794.6" y="194.0">672.9</text>
-<polyline class="l2" points="119.4,315.6 230.3,311.0 341.1,310.1 452.0,217.7 562.9,217.5 673.7,177.1 784.6,152.3"/>
-<circle class="m2" cx="119.4" cy="315.6" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): 4.8k prompt 56.4 t/s, VRAM 6307 MiB</title></circle>
-<circle class="m2" cx="230.3" cy="311.0" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): 4.8k prompt 77.1 t/s, VRAM 6596 MiB</title></circle>
-<circle class="m2" cx="341.1" cy="310.1" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): 4.8k prompt 81.5 t/s, VRAM 6420 MiB</title></circle>
-<circle class="m2" cx="452.0" cy="217.7" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): 4.8k prompt 501.3 t/s, VRAM 7441 MiB</title></circle>
-<circle class="m2" cx="562.9" cy="217.5" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): 4.8k prompt 502.5 t/s, VRAM 7534 MiB</title></circle>
-<circle class="m2" cx="673.7" cy="177.1" r="5"><title>S5 preset: ub 1024 (balanced) (1410a556): 4.8k prompt 685.8 t/s, VRAM 7758 MiB</title></circle>
-<circle class="m2" cx="784.6" cy="152.3" r="5"><title>S6 LLAMA_EXPERT_PREFETCH=1 (prefill-heavy), cache 2600 (d2514c6ea): 4.8k prompt 798.5 t/s, VRAM 7753 MiB</title></circle>
-<text class="val" x="794.6" y="146.3">798.5</text>
-<text class="tick" x="840" y="98" text-anchor="end">1k prompt: 57.6 -> 672.9 (11.7x)</text>
+<polyline class="l1" points="112.5,315.3 209.5,312.4 306.5,311.7 403.5,232.4 500.5,228.2 597.5,199.9 694.5,180.0 791.5,182.8"/>
+<circle class="m1" cx="112.5" cy="315.3" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): 1k prompt 57.6 t/s, VRAM 6307 MiB</title></circle>
+<circle class="m1" cx="209.5" cy="312.4" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): 1k prompt 70.7 t/s, VRAM 6596 MiB</title></circle>
+<circle class="m1" cx="306.5" cy="311.7" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): 1k prompt 74.1 t/s, VRAM 6420 MiB</title></circle>
+<circle class="m1" cx="403.5" cy="232.4" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): 1k prompt 434.4 t/s, VRAM 7441 MiB</title></circle>
+<circle class="m1" cx="500.5" cy="228.2" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): 1k prompt 453.8 t/s, VRAM 7534 MiB</title></circle>
+<circle class="m1" cx="597.5" cy="199.9" r="5"><title>S5 preset: ub 1024 (balanced) (1410a556): 1k prompt 582.4 t/s, VRAM 7758 MiB</title></circle>
+<circle class="m1" cx="694.5" cy="180.0" r="5"><title>S6 LLAMA_EXPERT_PREFETCH=1 (prefill-heavy), cache 2600 (d2514c6ea): 1k prompt 672.9 t/s, VRAM 7753 MiB</title></circle>
+<circle class="m1" cx="791.5" cy="182.8" r="5"><title>S7 LLAMA_EXPERT_PREFETCH=1, ub 2048, cache 2000 (max prefill) (d25dc474): 1k prompt 659.8 t/s, VRAM 7620 MiB</title></circle>
+<text class="val" x="801.5" y="196.8">659.8</text>
+<polyline class="l2" points="112.5,315.6 209.5,311.0 306.5,310.1 403.5,217.7 500.5,217.5 597.5,177.1 694.5,152.3 791.5,124.5"/>
+<circle class="m2" cx="112.5" cy="315.6" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): 4.8k prompt 56.4 t/s, VRAM 6307 MiB</title></circle>
+<circle class="m2" cx="209.5" cy="311.0" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): 4.8k prompt 77.1 t/s, VRAM 6596 MiB</title></circle>
+<circle class="m2" cx="306.5" cy="310.1" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): 4.8k prompt 81.5 t/s, VRAM 6420 MiB</title></circle>
+<circle class="m2" cx="403.5" cy="217.7" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): 4.8k prompt 501.3 t/s, VRAM 7441 MiB</title></circle>
+<circle class="m2" cx="500.5" cy="217.5" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): 4.8k prompt 502.5 t/s, VRAM 7534 MiB</title></circle>
+<circle class="m2" cx="597.5" cy="177.1" r="5"><title>S5 preset: ub 1024 (balanced) (1410a556): 4.8k prompt 685.8 t/s, VRAM 7758 MiB</title></circle>
+<circle class="m2" cx="694.5" cy="152.3" r="5"><title>S6 LLAMA_EXPERT_PREFETCH=1 (prefill-heavy), cache 2600 (d2514c6ea): 4.8k prompt 798.5 t/s, VRAM 7753 MiB</title></circle>
+<circle class="m2" cx="791.5" cy="124.5" r="5"><title>S7 LLAMA_EXPERT_PREFETCH=1, ub 2048, cache 2000 (max prefill) (d25dc474): 4.8k prompt 924.9 t/s, VRAM 7620 MiB</title></circle>
+<text class="val" x="801.5" y="118.5">924.9</text>
+<text class="tick" x="840" y="98" text-anchor="end">1k prompt: 57.6 -> 659.8 (11.5x)</text>
 <text class="ptitle" x="64" y="376">Decode (token generation, 128 tokens)</text>
 <line class="base" x1="64" x2="840" y1="606.0" y2="606.0"/>
 <text class="tick" x="56" y="610.0" text-anchor="end">0</text>
@@ -67,51 +69,57 @@ text { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fil
 <text class="tick" x="56" y="445.0" text-anchor="end">37.5</text>
 <line class="grid" x1="64" x2="840" y1="386.0" y2="386.0"/>
 <text class="tick" x="56" y="390.0" text-anchor="end">50</text>
-<polyline class="l1" points="119.4,526.8 230.3,497.3 341.1,485.4 452.0,473.6 562.9,456.0 673.7,456.0 784.6,467.8"/>
-<circle class="m1" cx="119.4" cy="526.8" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): after 1k 18 t/s, VRAM 6307 MiB</title></circle>
-<circle class="m1" cx="230.3" cy="497.3" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): after 1k 24.7 t/s, VRAM 6596 MiB</title></circle>
-<circle class="m1" cx="341.1" cy="485.4" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): after 1k 27.4 t/s, VRAM 6420 MiB</title></circle>
-<circle class="m1" cx="452.0" cy="473.6" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): after 1k 30.1 t/s, VRAM 7441 MiB</title></circle>
-<circle class="m1" cx="562.9" cy="456.0" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): after 1k 34.1 t/s, VRAM 7534 MiB</title></circle>
-<circle class="m1" cx="673.7" cy="456.0" r="5"><title>S5 preset: ub 1024 (balanced) (1410a556): after 1k 34.1 t/s, VRAM 7758 MiB</title></circle>
-<circle class="m1" cx="784.6" cy="467.8" r="5"><title>S6 LLAMA_EXPERT_PREFETCH=1 (prefill-heavy), cache 2600 (d2514c6ea): after 1k 31.4 t/s, VRAM 7753 MiB</title></circle>
-<text class="val" x="794.6" y="461.8">31.4</text>
-<polyline class="l2" points="119.4,529.9 230.3,499.1 341.1,486.8 452.0,478.8 562.9,461.7 673.7,464.8 784.6,474.9"/>
-<circle class="m2" cx="119.4" cy="529.9" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): after 4.8k 17.3 t/s, VRAM 6307 MiB</title></circle>
-<circle class="m2" cx="230.3" cy="499.1" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): after 4.8k 24.3 t/s, VRAM 6596 MiB</title></circle>
-<circle class="m2" cx="341.1" cy="486.8" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): after 4.8k 27.1 t/s, VRAM 6420 MiB</title></circle>
-<circle class="m2" cx="452.0" cy="478.8" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): after 4.8k 28.9 t/s, VRAM 7441 MiB</title></circle>
-<circle class="m2" cx="562.9" cy="461.7" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): after 4.8k 32.8 t/s, VRAM 7534 MiB</title></circle>
-<circle class="m2" cx="673.7" cy="464.8" r="5"><title>S5 preset: ub 1024 (balanced) (1410a556): after 4.8k 32.1 t/s, VRAM 7758 MiB</title></circle>
-<circle class="m2" cx="784.6" cy="474.9" r="5"><title>S6 LLAMA_EXPERT_PREFETCH=1 (prefill-heavy), cache 2600 (d2514c6ea): after 4.8k 29.8 t/s, VRAM 7753 MiB</title></circle>
-<text class="val" x="794.6" y="488.9">29.8</text>
-<text class="tick" x="840" y="376" text-anchor="end">after 1k: 18 -> 31.4 (1.7x)</text>
-<text class="ptitle" x="119.4" y="622" text-anchor="middle" style="font-size:12px">S0</text>
-<text class="tick" x="119.4" y="636" text-anchor="middle">upstream master</text>
-<text class="tick" x="119.4" y="649" text-anchor="middle">(no-op-offload,</text>
-<text class="tick" x="119.4" y="662" text-anchor="middle">ub32, cache 2800)</text>
-<text class="ptitle" x="230.3" y="622" text-anchor="middle" style="font-size:12px">S1</text>
-<text class="tick" x="230.3" y="636" text-anchor="middle">+ MoE cache dedup</text>
-<text class="tick" x="230.3" y="649" text-anchor="middle">(adishik</text>
-<text class="tick" x="230.3" y="662" text-anchor="middle">65dd939f)</text>
-<text class="ptitle" x="341.1" y="622" text-anchor="middle" style="font-size:12px">S2</text>
-<text class="tick" x="341.1" y="636" text-anchor="middle">+ fused glue ops</text>
-<text class="tick" x="341.1" y="649" text-anchor="middle">+ FA bias</text>
-<text class="tick" x="341.1" y="662" text-anchor="middle">(#32740), same</text>
-<text class="ptitle" x="452.0" y="622" text-anchor="middle" style="font-size:12px">S3</text>
-<text class="tick" x="452.0" y="636" text-anchor="middle">op-offload on</text>
-<text class="tick" x="452.0" y="649" text-anchor="middle">(views fix),</text>
-<text class="tick" x="452.0" y="662" text-anchor="middle">ub512, cache 3400</text>
-<text class="ptitle" x="562.9" y="622" text-anchor="middle" style="font-size:12px">S4</text>
-<text class="tick" x="562.9" y="636" text-anchor="middle">+ dedup with CPU</text>
-<text class="tick" x="562.9" y="649" text-anchor="middle">share 0.7</text>
-<text class="ptitle" x="673.7" y="622" text-anchor="middle" style="font-size:12px">S5</text>
-<text class="tick" x="673.7" y="636" text-anchor="middle">preset: ub 1024</text>
-<text class="tick" x="673.7" y="649" text-anchor="middle">(balanced)</text>
-<text class="ptitle" x="784.6" y="622" text-anchor="middle" style="font-size:12px">S6</text>
-<text class="tick" x="784.6" y="636" text-anchor="middle">LLAMA_EXPERT_PREF</text>
-<text class="tick" x="784.6" y="649" text-anchor="middle">ETCH=1 (prefill-</text>
-<text class="tick" x="784.6" y="662" text-anchor="middle">heavy), cache</text>
+<polyline class="l1" points="112.5,526.8 209.5,497.3 306.5,485.4 403.5,473.6 500.5,456.0 597.5,456.0 694.5,467.8 791.5,477.5"/>
+<circle class="m1" cx="112.5" cy="526.8" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): after 1k 18 t/s, VRAM 6307 MiB</title></circle>
+<circle class="m1" cx="209.5" cy="497.3" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): after 1k 24.7 t/s, VRAM 6596 MiB</title></circle>
+<circle class="m1" cx="306.5" cy="485.4" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): after 1k 27.4 t/s, VRAM 6420 MiB</title></circle>
+<circle class="m1" cx="403.5" cy="473.6" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): after 1k 30.1 t/s, VRAM 7441 MiB</title></circle>
+<circle class="m1" cx="500.5" cy="456.0" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): after 1k 34.1 t/s, VRAM 7534 MiB</title></circle>
+<circle class="m1" cx="597.5" cy="456.0" r="5"><title>S5 preset: ub 1024 (balanced) (1410a556): after 1k 34.1 t/s, VRAM 7758 MiB</title></circle>
+<circle class="m1" cx="694.5" cy="467.8" r="5"><title>S6 LLAMA_EXPERT_PREFETCH=1 (prefill-heavy), cache 2600 (d2514c6ea): after 1k 31.4 t/s, VRAM 7753 MiB</title></circle>
+<circle class="m1" cx="791.5" cy="477.5" r="5"><title>S7 LLAMA_EXPERT_PREFETCH=1, ub 2048, cache 2000 (max prefill) (d25dc474): after 1k 29.2 t/s, VRAM 7620 MiB</title></circle>
+<text class="val" x="801.5" y="471.5">29.2</text>
+<polyline class="l2" points="112.5,529.9 209.5,499.1 306.5,486.8 403.5,478.8 500.5,461.7 597.5,464.8 694.5,474.9 791.5,488.5"/>
+<circle class="m2" cx="112.5" cy="529.9" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): after 4.8k 17.3 t/s, VRAM 6307 MiB</title></circle>
+<circle class="m2" cx="209.5" cy="499.1" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): after 4.8k 24.3 t/s, VRAM 6596 MiB</title></circle>
+<circle class="m2" cx="306.5" cy="486.8" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): after 4.8k 27.1 t/s, VRAM 6420 MiB</title></circle>
+<circle class="m2" cx="403.5" cy="478.8" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): after 4.8k 28.9 t/s, VRAM 7441 MiB</title></circle>
+<circle class="m2" cx="500.5" cy="461.7" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): after 4.8k 32.8 t/s, VRAM 7534 MiB</title></circle>
+<circle class="m2" cx="597.5" cy="464.8" r="5"><title>S5 preset: ub 1024 (balanced) (1410a556): after 4.8k 32.1 t/s, VRAM 7758 MiB</title></circle>
+<circle class="m2" cx="694.5" cy="474.9" r="5"><title>S6 LLAMA_EXPERT_PREFETCH=1 (prefill-heavy), cache 2600 (d2514c6ea): after 4.8k 29.8 t/s, VRAM 7753 MiB</title></circle>
+<circle class="m2" cx="791.5" cy="488.5" r="5"><title>S7 LLAMA_EXPERT_PREFETCH=1, ub 2048, cache 2000 (max prefill) (d25dc474): after 4.8k 26.7 t/s, VRAM 7620 MiB</title></circle>
+<text class="val" x="801.5" y="502.5">26.7</text>
+<text class="tick" x="840" y="376" text-anchor="end">after 1k: 18 -> 29.2 (1.6x)</text>
+<text class="ptitle" x="112.5" y="622" text-anchor="middle" style="font-size:12px">S0</text>
+<text class="tick" x="112.5" y="636" text-anchor="middle">upstream master</text>
+<text class="tick" x="112.5" y="649" text-anchor="middle">(no-op-offload,</text>
+<text class="tick" x="112.5" y="662" text-anchor="middle">ub32, cache</text>
+<text class="ptitle" x="209.5" y="622" text-anchor="middle" style="font-size:12px">S1</text>
+<text class="tick" x="209.5" y="636" text-anchor="middle">+ MoE cache</text>
+<text class="tick" x="209.5" y="649" text-anchor="middle">dedup (adishik</text>
+<text class="tick" x="209.5" y="662" text-anchor="middle">65dd939f)</text>
+<text class="ptitle" x="306.5" y="622" text-anchor="middle" style="font-size:12px">S2</text>
+<text class="tick" x="306.5" y="636" text-anchor="middle">+ fused glue</text>
+<text class="tick" x="306.5" y="649" text-anchor="middle">ops + FA bias</text>
+<text class="tick" x="306.5" y="662" text-anchor="middle">(#32740), same</text>
+<text class="ptitle" x="403.5" y="622" text-anchor="middle" style="font-size:12px">S3</text>
+<text class="tick" x="403.5" y="636" text-anchor="middle">op-offload on</text>
+<text class="tick" x="403.5" y="649" text-anchor="middle">(views fix),</text>
+<text class="tick" x="403.5" y="662" text-anchor="middle">ub512, cache</text>
+<text class="ptitle" x="500.5" y="622" text-anchor="middle" style="font-size:12px">S4</text>
+<text class="tick" x="500.5" y="636" text-anchor="middle">+ dedup with</text>
+<text class="tick" x="500.5" y="649" text-anchor="middle">CPU share 0.7</text>
+<text class="ptitle" x="597.5" y="622" text-anchor="middle" style="font-size:12px">S5</text>
+<text class="tick" x="597.5" y="636" text-anchor="middle">preset: ub 1024</text>
+<text class="tick" x="597.5" y="649" text-anchor="middle">(balanced)</text>
+<text class="ptitle" x="694.5" y="622" text-anchor="middle" style="font-size:12px">S6</text>
+<text class="tick" x="694.5" y="636" text-anchor="middle">LLAMA_EXPERT_PR</text>
+<text class="tick" x="694.5" y="649" text-anchor="middle">EFETCH=1</text>
+<text class="tick" x="694.5" y="662" text-anchor="middle">(prefill-</text>
+<text class="ptitle" x="791.5" y="622" text-anchor="middle" style="font-size:12px">S7</text>
+<text class="tick" x="791.5" y="636" text-anchor="middle">LLAMA_EXPERT_PR</text>
+<text class="tick" x="791.5" y="649" text-anchor="middle">EFETCH=1, ub</text>
+<text class="tick" x="791.5" y="662" text-anchor="middle">2048, cache</text>
 <line class="l1" x1="64" x2="86" y1="64" y2="64"/>
 <circle class="m1" cx="75" cy="64" r="4"/>
 <text x="92" y="68">1k-token prompt</text>

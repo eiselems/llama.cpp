@@ -6,3 +6,4 @@ S3	4fb181db	op-offload on (views fix), ub512, cache 3400	7441	434.4	501.3	30.1	2
 S4	2ecddfadf	+ dedup with CPU share 0.7	7534	453.8	502.5	34.1	32.8	--fit off -ngl all -cmoe -b 2048 -ub 512 --moe-cache-mib 3400 --moe-cache-cpu-share 0.7
 S5	1410a556	preset: ub 1024 (balanced)	7758	582.4	685.8	34.1	32.1	--fit off -ngl all -cmoe -b 2048 -ub 1024 --moe-cache-mib 3400 --moe-cache-cpu-share 0.7
 S6	d2514c6ea	LLAMA_EXPERT_PREFETCH=1 (prefill-heavy), cache 2600	7753	672.9	798.5	31.4	29.8	LLAMA_EXPERT_PREFETCH=1 --fit off -ngl all -cmoe -b 2048 -ub 1024 --moe-cache-mib 2600 --moe-cache-cpu-share 0.7
+S7	d25dc474	LLAMA_EXPERT_PREFETCH=1, ub 2048, cache 2000 (max prefill)	7620	659.8	924.9	29.2	26.7	LLAMA_EXPERT_PREFETCH=1 --fit off -ngl all -cmoe -b 2048 -ub 2048 --moe-cache-mib 2000 --moe-cache-cpu-share 0.7
