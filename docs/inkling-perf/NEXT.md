@@ -39,6 +39,13 @@ ggml_backend_buft_get_alloc_size, CUDA pads quantized tensors). Before fixing it
 likely the MoE cache's per-layer plan() sync still serializes every split. Try the prototype with the MoE cache off
 first to separate the two effects.
 
+Follow-up 04:30 (slot sizing fixed on the try branch): with the MoE cache OFF prefetch is still no faster
+(466.9 / 582.1 vs 464.3 / 578.7 t/s), while the slots are allocated (+790 MiB), so the cache sync is not the cause.
+**Lead:** the host experts are probably NOT pinned (22 GB/s alone does not prove it). cudaMemcpyAsync from pageable
+memory blocks the host thread, so nothing overlaps. First check which buffer type holds the host experts
+(`-lv 4` load log: CPU vs CUDA_Host); pinning them may also speed up the plain upload path.
+Side finding: the MoE cache also speeds up prefill (464 t/s without vs ~575 with a 2600-3000 MiB cache at -ub 1024).
+
 ## 2. Make --fit pick the good preset
 
 Default --fit gives 365 t/s / 20 t/s because it picks a small MoE cache. It should prefer
@@ -51,7 +58,7 @@ a 72 MiB layer-input buffer), so the MoE cache has to shrink. See the README for
 
 ## 4. Smaller items
 
-- `--moe-cache-cpu-share` between 0.7 and 1.0 was not swept finely (0.7 = 34.1 t/s, 1.0 = 22 t/s).
+- `--moe-cache-cpu-share` swept: 0.6 = 33.6, 0.7 = 34.1, 0.8 = 33.2, 1.0 = 22 t/s; 0.7 kept.
 - PR #32076 (MoE cache without syncs) crashes with dedup (illegal memory access) and gives no gain without it
   on Linux CUDA; parked on local branch `inkling-perf-32076-wip`.
 - Card-sampling quality eval (v1-v4) on this build: speed no longer blocks it.
