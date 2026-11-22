@@ -3150,7 +3150,7 @@ bool llama_context::sched_copy_experts(ggml_backend_t backend, const ggml_tensor
     }
 
     // the expert weights in host memory: from a prefetched slot if there is one
-    if (lctx->prefetch.enabled && strstr(src->name, "_exps") != nullptr && lctx->expert_prefetch_copy(backend, src, dst, graph)) {
+    if (lctx->prefetch.enabled && strstr(src->name, "_exps.weight") != nullptr && lctx->expert_prefetch_copy(backend, src, dst, graph)) {
         return true;
     }
 
@@ -3348,6 +3348,11 @@ bool llama_context::expert_prefetch_copy(ggml_backend_t backend, const ggml_tens
     auto & p = prefetch;
     const size_t pos = p.cur.size();
     p.cur.push_back(src);
+    if (getenv("LLAMA_EXPERT_PREFETCH_TRACE")) {
+        const ggml_tensor * want = pos < p.order.size() ? p.order[pos] : nullptr;
+        LLAMA_LOG_INFO("prefetch-trace pos=%zu src=%s(%p) order[pos]=%s(%p) slot0=%p slot1=%p\n", pos, src->name, (const void *) src,
+                want ? want->name : "-", (const void *) want, (const void *) p.slots[0].src, (const void *) p.slots[1].src);
+    }
 
     // large batches only: nearly every expert is selected, so the whole tensor is what gets uploaded anyway
     bool large = false;
