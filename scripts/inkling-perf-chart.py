@@ -11,9 +11,9 @@ rows = list(csv.DictReader(open(os.path.join(root, 'progress.tsv')), delimiter='
 if not rows:
     sys.exit('no rows')
 
-W, PAD_L, PAD_R = 960, 64, 120
+W, PAD_L, PAD_R = 1240, 64, 120
 PANEL_H, GAP, TOP = 220, 58, 78
-X_LAB = 70                                   # room for the rotated step labels under the lower panel
+X_LAB = 150                                  # room for the rotated step labels under the lower panel
 H = TOP + 30 + 2*PANEL_H + GAP + X_LAB
 plot_w = W - PAD_L - PAD_R
 n = len(rows)
@@ -108,8 +108,13 @@ chars = max(10, int(col_w/6.2))
 for i, r in enumerate(rows):
     yb = y_tg + PANEL_H + 16
     out.append(f'<text class="ptitle" x="{xs[i]:.1f}" y="{yb}" text-anchor="middle" style="font-size:12px">{html.escape(r["step"])}</text>')
-    for j, line in enumerate(textwrap.wrap(r['change'], chars)[:3]):
-        out.append(f'<text class="tick" x="{xs[i]:.1f}" y="{yb + 14 + 13*j}" text-anchor="middle">{html.escape(line)}</text>')
+    if n <= 10:
+        for j, line in enumerate(textwrap.wrap(r['change'], chars)[:3]):
+            out.append(f'<text class="tick" x="{xs[i]:.1f}" y="{yb + 14 + 13*j}" text-anchor="middle">{html.escape(line)}</text>')
+    else:
+        # many steps: one short label per step, at an angle so neighbours do not overlap
+        lab = r['change'] if len(r['change']) <= 30 else r['change'][:29] + '...'
+        out.append(f'<text class="tick" transform="translate({xs[i] + 4:.1f},{yb + 10}) rotate(35)" text-anchor="start">{html.escape(lab)}</text>')
 
 # legend (always present for 2 series): line style + marker, so identity is not color alone
 lx, ly = PAD_L, 64
