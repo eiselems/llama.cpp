@@ -2025,6 +2025,31 @@ void llama_kv_cache::set_input_relative_pos(ggml_tensor * dst, const ggml_tensor
     ggml_backend_tensor_set(dst, data.data(), 0, ggml_nbytes(dst));
 }
 
+// [n_kv, 2*n_stream]: row 2*s the position of each mask column (cell) of stream s, -1 if empty; row 2*s+1 the positions
+// of the queries of stream s (see ggml_flash_attn_ext_add_position_bias)
+void llama_kv_cache::set_input_bias_positions(ggml_tensor * dst, const ggml_tensor * rows, const llama_ubatch * ubatch) const {
+    GGML_ASSERT(dst->type == GGML_TYPE_I32);
+    const int64_t n_kv     = dst->ne[0];
+    const int64_t n_stream = dst->ne[1]/2;
+    GGML_ASSERT(n_stream >= 1 && ubatch->n_tokens % n_stream == 0);
+    GGML_ASSERT(!rows || (rows->ne[0] == n_kv && ggml_backend_buffer_is_host(rows->buffer)));
+    const int64_t n_tps = ubatch->n_tokens / n_stream;
+    GGML_ASSERT(n_tps <= n_kv);
+    std::vector<int32_t> data(n_kv * 2*n_stream, -1);
+    for (int64_t s = 0; s < n_stream; ++s) {
+        const auto & cells = v_cells.at(seq_to_stream.at(ubatch->seq_id[s*n_tps][0]));
+        const int32_t * list = rows ? (const int32_t *) rows->data + s*n_kv : nullptr;
+        for (int64_t j = 0; j < n_kv; ++j) {
+            const int64_t cell = list ? list[j] : j;
+            data[(2*s + 0)*n_kv + j] = cell < 0 || cells.is_empty(cell) ? -1 : cells.pos_get(cell);
+        }
+        for (int64_t i = 0; i < n_tps; ++i) {
+            data[(2*s + 1)*n_kv + i] = ubatch->pos[s*n_tps + i];
+        }
+    }
+    ggml_backend_tensor_set(dst, data.data(), 0, ggml_nbytes(dst));
+}
+
 void llama_kv_cache::get_prev_tokens(const llama_ubatch & ubatch, uint32_t n, std::vector<llama_token> & res) const {
     const uint32_t n_tokens = ubatch.n_tokens;
 
@@ -3130,6 +3155,10 @@ void llama_kv_cache_context::set_input_pos_bucket(ggml_tensor * dst, const llama
 
 void llama_kv_cache_context::set_input_relative_pos(ggml_tensor * dst, const ggml_tensor * rows, const llama_ubatch * ubatch, uint32_t extent) const {
     kv->set_input_relative_pos(dst, rows, ubatch, extent);
+}
+
+void llama_kv_cache_context::set_input_bias_positions(ggml_tensor * dst, const ggml_tensor * rows, const llama_ubatch * ubatch) const {
+    kv->set_input_bias_positions(dst, rows, ubatch);
 }
 
 void llama_kv_cache_context::get_prev_tokens(const llama_ubatch & ubatch, uint32_t n, std::vector<llama_token> & res) const {

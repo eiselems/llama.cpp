@@ -30,6 +30,13 @@
 
 // dedup helpers
 
+// LLAMA_ATTN_BIAS_POSITIONS=1: hand the relative-position bias to flash attention as query/cell positions
+// ([n_kv, 2*n_stream]) instead of an [n_kv, n_tokens] index matrix; the kernel derives the index itself
+static bool llama_attn_bias_positions() {
+    static const bool v = [] { const char * e = getenv("LLAMA_ATTN_BIAS_POSITIONS"); return e && atoi(e) != 0; }();
+    return v;
+}
+
 static ggml_tensor * build_attn_inp_kq_mask(
         ggml_context * ctx,
         const llama_kv_cache_context * mctx,
@@ -1447,7 +1454,11 @@ void llm_graph_input_mem_hybrid_iswa_rel::set_input(const llama_ubatch * ubatch)
     }
 
     if (self_rel_pos->buffer) {
-        attn_ctx->get_base()->set_input_relative_pos(self_rel_pos, inp_attn->self_attn_mask.rows, ubatch, extent);
+        if (bias_positions) {
+            attn_ctx->get_base()->set_input_bias_positions(self_rel_pos, inp_attn->self_attn_mask.rows, ubatch);
+        } else {
+            attn_ctx->get_base()->set_input_relative_pos(self_rel_pos, inp_attn->self_attn_mask.rows, ubatch, extent);
+        }
     }
 
     // swa tensors may not be allocated if there are no SWA attention layers
@@ -1461,7 +1472,11 @@ void llm_graph_input_mem_hybrid_iswa_rel::set_input(const llama_ubatch * ubatch)
     }
 
     if (self_rel_pos_swa->buffer) {
-        attn_ctx->get_swa()->set_input_relative_pos(self_rel_pos_swa, inp_attn->self_attn_mask_swa.rows, ubatch, extent_swa);
+        if (bias_positions) {
+            attn_ctx->get_swa()->set_input_bias_positions(self_rel_pos_swa, inp_attn->self_attn_mask_swa.rows, ubatch);
+        } else {
+            attn_ctx->get_swa()->set_input_relative_pos(self_rel_pos_swa, inp_attn->self_attn_mask_swa.rows, ubatch, extent_swa);
+        }
     }
 
     const int64_t n_rs = mctx->get_recr()->get_n_rs();
@@ -1495,7 +1510,7 @@ bool llm_graph_input_mem_hybrid_iswa_rel::can_reuse(const llm_graph_params & par
 
     res &= can_reuse_attn_mask(inp_attn->self_attn_mask, attn_ctx->get_base(), params.ubatch, params.cparams);
 
-    res &= self_rel_pos->ne[1] == params.ubatch.n_tokens;
+    res &= bias_positions ? self_rel_pos->ne[1] == 2*inp_attn->self_attn_mask.raw->ne[3] : self_rel_pos->ne[1] == params.ubatch.n_tokens;
 
     // swa tensors may not be allocated if there are no SWA attention layers
     if (inp_attn->self_k_idxs_swa && inp_attn->self_k_idxs_swa->buffer) {
@@ -1504,7 +1519,7 @@ bool llm_graph_input_mem_hybrid_iswa_rel::can_reuse(const llm_graph_params & par
 
     res &= can_reuse_attn_mask(inp_attn->self_attn_mask_swa, attn_ctx->get_swa(), params.ubatch, params.cparams);
 
-    res &= self_rel_pos_swa->ne[1] == params.ubatch.n_tokens;
+    res &= bias_positions ? self_rel_pos_swa->ne[1] == 2*inp_attn->self_attn_mask_swa.raw->ne[3] : self_rel_pos_swa->ne[1] == params.ubatch.n_tokens;
 
     res &= inp_rs->s_copy->ne[0] == mctx->get_recr()->get_n_rs();
 
@@ -3209,9 +3224,15 @@ ggml_tensor * llm_graph_context::build_attn_mha(
         ggml_flash_attn_ext_set_n_kv_max(cur, static_cast<int32_t>(n_kv_max));
         ggml_prec_set_acc(cur, GGML_PREC_F32);
         if (bias_table) {
-            ggml_flash_attn_ext_add_indexed_bias(cur, bias_table, bias_indices);
+            const bool bias_pos = llama_attn_bias_positions(); // see build_inp_mem_hybrid_iswa_rel
+            if (bias_pos) {
+                ggml_flash_attn_ext_add_position_bias(cur, bias_table, bias_indices);
+            } else {
+                ggml_flash_attn_ext_add_indexed_bias(cur, bias_table, bias_indices);
+            }
             const auto dev = model.dev_layer(il);
             if (!cparams.offload_kqv || !dev || !ggml_backend_dev_supports_op(dev, cur)) {
+                GGML_ASSERT(!bias_pos && "LLAMA_ATTN_BIAS_POSITIONS: the attention device does not support the position bias");
                 ggml_flash_attn_ext_add_indexed_bias(cur, nullptr, nullptr);
                 cur->src[3] = dense_bias_mask();
             } else if (kv_rows) {
@@ -4468,11 +4489,17 @@ llm_graph_input_mem_hybrid_iswa_rel * llm_graph_context::build_inp_mem_hybrid_is
 
     auto inp = std::make_unique<llm_graph_input_mem_hybrid_iswa_rel>(cparams, std::move(inp_attn), std::move(inp_rs), mctx_cur, extent, extent_swa);
 
-    inp->self_rel_pos = ggml_new_tensor_2d(ctx0, GGML_TYPE_I32, inp->get_attn()->self_attn_mask.raw->ne[0], ubatch.n_tokens);
+    const bool bias_pos = llama_attn_bias_positions();
+    GGML_ASSERT((!bias_pos || cparams.flash_attn) && "LLAMA_ATTN_BIAS_POSITIONS needs flash attention");
+    inp->bias_positions = bias_pos;
+
+    inp->self_rel_pos = ggml_new_tensor_2d(ctx0, GGML_TYPE_I32, inp->get_attn()->self_attn_mask.raw->ne[0],
+            bias_pos ? 2*inp->get_attn()->self_attn_mask.raw->ne[3] : ubatch.n_tokens);
     ggml_set_input(inp->self_rel_pos);
     ggml_set_name(inp->self_rel_pos, "attn_inp_rel_pos");
 
-    inp->self_rel_pos_swa = ggml_new_tensor_2d(ctx0, GGML_TYPE_I32, inp->get_attn()->self_attn_mask_swa.raw->ne[0], ubatch.n_tokens);
+    inp->self_rel_pos_swa = ggml_new_tensor_2d(ctx0, GGML_TYPE_I32, inp->get_attn()->self_attn_mask_swa.raw->ne[0],
+            bias_pos ? 2*inp->get_attn()->self_attn_mask_swa.raw->ne[3] : ubatch.n_tokens);
     ggml_set_input(inp->self_rel_pos_swa);
     ggml_set_name(inp->self_rel_pos_swa, "attn_inp_rel_pos_swa");
 

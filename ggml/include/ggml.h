@@ -2301,6 +2301,17 @@ extern "C" {
             struct ggml_tensor * table,
             struct ggml_tensor * indices);
 
+    // The same bias, with the index derived from positions instead of read from an [n_kv, n_query] matrix:
+    // positions is I32 [n_kv, 2*n_stream]: row 2*s holds the position of each mask column (KV cell) of stream s, -1 if
+    // the cell is empty, row 2*s+1 the positions of the queries of stream s (the first ne01 entries). The index is
+    // d = query_pos - cell_pos if the cell is valid and 0 <= d < table->ne[1] - 1, else table->ne[1] - 1.
+    GGML_API void ggml_flash_attn_ext_add_position_bias(
+            struct ggml_tensor * a,
+            struct ggml_tensor * table,
+            struct ggml_tensor * positions);
+
+    GGML_API bool ggml_flash_attn_ext_bias_from_positions(const struct ggml_tensor * a);
+
     // TODO: needs to be adapted to ggml_flash_attn_ext
     GGML_API struct ggml_tensor * ggml_flash_attn_back(
             struct ggml_context * ctx,

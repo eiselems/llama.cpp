@@ -20,9 +20,24 @@
 
 struct fattn_indexed_bias {
     const float * table;
-    const int32_t * indices;
+    const int32_t * indices; // [n_cols, n_query] bins, or [n_cols, 2*n_stream] positions (ggml_flash_attn_ext_add_position_bias)
     int64_t n_bins;
+    int32_t from_positions;
+    int32_t n_cols;
 };
+
+// the bias bin of global query `query` (stream `sequence`, query `jq` within it) at mask column k
+static __device__ __forceinline__ int fattn_bias_bin(
+        const fattn_indexed_bias & bias, const int64_t query, const int sequence, const int jq, const int k, const int64_t stride_mask) {
+    if (!bias.from_positions) {
+        return bias.indices[query*stride_mask + k];
+    }
+    const int32_t pc = bias.indices[(int64_t) (2*sequence + 0)*bias.n_cols + k];
+    const int32_t pq = bias.indices[(int64_t) (2*sequence + 1)*bias.n_cols + jq];
+    const int64_t d  = (int64_t) pq - pc;
+    const int32_t extent = (int32_t) bias.n_bins - 1;
+    return pc >= 0 && d >= 0 && d < extent ? (int) d : extent;
+}
 
 typedef void (* fattn_kernel_t)(
         const char * __restrict__ Q,
@@ -1335,7 +1350,9 @@ void launch_fattn(
         mask ? mask->nb[1] : 0, mask ? mask->nb[2] : 0, mask ? mask->nb[3] : 0,
         fattn_indexed_bias{dst->src[6] ? (const float *) dst->src[6]->data : nullptr,
                            dst->src[7] ? (const int32_t *) dst->src[7]->data : nullptr,
-                           dst->src[6] ? dst->src[6]->ne[1] : 0}
+                           dst->src[6] ? dst->src[6]->ne[1] : 0,
+                           dst->src[6] ? ggml_get_op_params_i32(dst, 6) : 0,
+                           dst->src[7] ? (int32_t) dst->src[7]->ne[0] : 0}
     );
     CUDA_CHECK(cudaGetLastError());
 

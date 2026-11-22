@@ -644,7 +644,7 @@ static __device__ __forceinline__ void flash_attn_tile_iter(
                 if constexpr (ncols2 == 1 && (DKQ == 64 || DKQ == 128)) {
                     if (bias.table) {
                         const int64_t query = (int64_t) sequence*ne01.z + j;
-                        const int bin = bias.indices[query*stride_mask + k];
+                        const int bin = fattn_bias_bin(bias, query, sequence, j, k, stride_mask);
                         if ((uint32_t) bin < bias.n_bins) {
                             m = __half2float(__float2half(m + bias.table[(query*bias.n_bins + bin)*n_heads + head]));
                         }
