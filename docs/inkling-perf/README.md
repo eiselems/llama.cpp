@@ -16,6 +16,7 @@ Common flags: `--fit off -ngl all -cmoe -b 2048 --moe-cache-cpu-share 0.7 -fa on
 
 | preset | env + extra flags | -ub | cache MiB (light / heavy desktop) | prefill 1k / 4.8k | decode @1k / @4.8k | VRAM peak (light) |
 |---|---|---:|---|---:|---:|---:|
+| **max decode** (S16, bench.py; prefill halves) | `LLAMA_EXPERT_PREFETCH=3 LLAMA_MOE_CACHE_ASYNC_FILL=1`, `-ctk q4_0 -ctv q4_0` | 512 | 3950 / ~3450 | 367 / 379 (bench.py) | **38.4** (bench.py median) | 7660 |
 | **max prefill, prefetch skip** (S15, bench.py) | `LLAMA_EXPERT_PREFETCH=1 LLAMA_EXPERT_PREFETCH_SKIP=1`, `-ctk q4_0 -ctv q4_0` | 2048 | 2650 / ~2150 | 850 / **1,003** (bench.py) | 33.2 (bench.py median) | 7301 |
 | **balanced, prefetch skip** (S14, bench.py) | `LLAMA_EXPERT_PREFETCH=1 LLAMA_EXPERT_PREFETCH_SKIP=1`, `-ctk q4_0 -ctv q4_0` | 1024 | 3200 / ~2700 | **858 / 912** (bench.py) | 35.9 (bench.py median) | 7424 |
 | **decode first, background fill** (S13, bench.py 2026-11-22) | `LLAMA_EXPERT_PREFETCH=3 LLAMA_MOE_CACHE_ASYNC_FILL=1`, `-ctk q4_0 -ctv q4_0` | 1024 | 3650 / ~3150 | 689 / 734 (bench.py) | **37.8** (bench.py median) | 7526 |
@@ -86,6 +87,7 @@ Theoretical ceilings (measured hardware, model bytes/FLOPs): [THEORY.md](THEORY.
 | E3b: E3 plus CPU share 0.85 / 0.95 | decode 37.2 / 36.6 vs 36.8 / 37.1 | neutral |
 | more CPU threads on S13 (`-t 8` / `-t 12`) | decode 36.5 / 35.5 vs 37.4 / 37.6 with `-t 6` | slower: the CPU expert part is RAM bound |
 | E5: this token's expert uploads over a second stream so CPU part and PCIe run in parallel (`LLAMA_MOE_CACHE_FILL_STREAM=1`), branch `inkling-try-split-path` | decode 36.1 / 35.1 vs S13 37.5 | slower: the scheduler queues the CPU part's input copy behind the uploads; needs a scheduler change |
+| thread polling on S13 (`--poll 100`, `--cpu-strict 1`) | decode 37.5 / 37.5 vs 37.2 / 37.2 | inside noise |
 
 Plan for the next session: [NEXT.md](NEXT.md).
 
