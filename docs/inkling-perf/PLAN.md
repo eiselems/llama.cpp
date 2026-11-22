@@ -155,3 +155,25 @@ Updated lever list (16:05):
 2. Fewer small GPU kernels per decode token (~7 ms/token in ~3,000 kernels).
 3. Scheduler: copy the CPU split's inputs before the expert phase, then retry E5.
 | 16:30-16:50 | E8: bias bin derived from positions in the FA kernel (`LLAMA_ATTN_BIAS_POSITIONS=1`, ggml_flash_attn_ext_add_position_bias), S17; ctl / pos / ctl / pos / ctl, `--long 38000` | prefill 29.7k 895 / **1,038** / 883 / **1,039** / 883 (+16 %); 4,724 tok 988 / **1,057** / 989 / **1,057** / 992 (+7 %); 958 tok 843 / 861 / 841 / 862 / 846 (+2 %); c1 33.6 / 33.5 / 33.3 / 33.4 / 33.4; decode after 29.7k 25.1 / 24.5 / 25.2 / 25.2 / 23.4; VRAM 7.13 -> 6.85 GiB; gates PASS, needles 3/3 | **accepted**: merged 58797ab4f, preset S18 = S17 + E8 |
+
+### Idea 6: expert prediction across loop passes (trace analysis, 17:55-18:15)
+
+Trace: S16 (cache 3950 MiB, share 0.7), 3 prompts x 300 decode tokens, replayed with dedup keys
+(`scripts/inkling/moe-trace-predict.py`). The graph runs slots 0-17, 24-47, 18-23; the passes of looped layer p are
+slots p, p+18, p+30 (same-token overlap of slot 6: 0.56 with 24, 0.40 with 36, ~0.06 = chance with any other slot).
+
+| | per decode token |
+|---|---:|
+| expert uses | 384 (48 x 8) |
+| misses (simulated hit rate 83.9 %, matches the server) | 61.9: 18.6 uploaded, 43.3 on the CPU |
+| miss: CPU-computed in an earlier pass of the same token (not cached, so missed again) | 7.1 (11.5 %) |
+| miss: used by the previous token | 7.1 (11.4 %) |
+| miss: used within the last 8 / 64 tokens | 12.3 / 28.5 (20 % / 46 %) |
+| miss: not used in the last 64 tokens | 6.9 (11 %) |
+
+Pass-to-pass reuse already works through the shared keys, except for the CPU-computed experts. Simulated fix
+(E9): upload each CPU-computed miss of pass 1/2 in the background for the later passes: misses 61.9 -> 53.8
+(CPU 43.3 -> 37.7, synchronous uploads 18.6 -> 16.1) for 11 background uploads (47 MB/token, ~1.8 ms of PCIe
+in the background). Estimated ~1 ms/token saved of ~26 = +3-4 % decode, if the background uploads stay
+off the critical path. The other 77 % of the misses are capacity misses (evicted within 64 tokens), which
+prediction does not fix.
