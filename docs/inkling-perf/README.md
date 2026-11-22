@@ -16,6 +16,7 @@ Common flags: `--fit off -ngl all -cmoe -b 2048 --moe-cache-cpu-share 0.7 -fa on
 
 | preset | env + extra flags | -ub | cache MiB (light / heavy desktop) | prefill 1k / 4.8k | decode @1k / @4.8k | VRAM peak (light) |
 |---|---|---:|---|---:|---:|---:|
+| **decode first, background fill** (S13, bench.py 2026-11-22) | `LLAMA_EXPERT_PREFETCH=3 LLAMA_MOE_CACHE_ASYNC_FILL=1`, `-ctk q4_0 -ctv q4_0` | 1024 | 3650 / ~3150 | 689 / 734 (bench.py) | **37.8** (bench.py median) | 7526 |
 | **decode first** (S10) | `LLAMA_EXPERT_PREFETCH=3`, `-ctk q4_0 -ctv q4_0` | 1024 | 3650 / ~3150 | 638 / 724 | **35.2 / 33.0** | 7604 |
 | **balanced** (S11) | `LLAMA_EXPERT_PREFETCH=1`, `-ctk q4_0 -ctv q4_0` | 1024 | 3200 / ~2700 | 682 / 802 | 33.4 / 31.6 | 7502 |
 | **max prefill** (S12) | `LLAMA_EXPERT_PREFETCH=1`, `-ctk q4_0 -ctv q4_0` | 2048 | 2650 / ~2150 | 676 / **932** | 32.0 / 27.5 | 7382 |
