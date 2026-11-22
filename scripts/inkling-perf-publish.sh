@@ -9,8 +9,14 @@ if [ "$branch" != "inkling-2-perf-improvement" ]; then
     echo "not publishing: on branch '${branch:-detached}', expected inkling-2-perf-improvement" >&2
     exit 1
 fi
+# copies of the hill-climb configs and ledger (experiment dir outside the repo)
+E=${CLIMB_DIR:-$HOME/eval-runs-20261122-inkling/climb}
+if [ -d "$E/configs" ]; then
+    mkdir -p docs/inkling-perf/climb && cp "$E"/configs/*.json docs/inkling-perf/climb/ 2>/dev/null
+    [ -s "$E/ledger.jsonl" ] && cp "$E/ledger.jsonl" docs/inkling-perf/climb/ledger.jsonl
+fi
 python3 -I scripts/inkling-perf-chart.py || exit 1
-paths=(docs/inkling-perf scripts/inkling-bench.sh scripts/inkling-perf-chart.py scripts/inkling-perf-publish.sh)
+paths=(docs/inkling-perf scripts/inkling-bench.sh scripts/inkling-perf-chart.py scripts/inkling-perf-publish.sh scripts/inkling)
 git add -- "${paths[@]}"
 if git diff --cached --quiet -- "${paths[@]}"; then
     echo "nothing new to publish"
