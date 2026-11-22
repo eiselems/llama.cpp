@@ -441,6 +441,7 @@ private:
 
         bool enabled = false;
         bool failed  = false;
+        float frac = 1.0f; // share of the experts of each tensor that is prefetched (LLAMA_EXPERT_PREFETCH_FRAC)
         ggml_backend_t compute = nullptr;
         ggml_backend_t copy    = nullptr;               // second backend instance on the same device: its own stream
         ggml_backend_buffer_t buf = nullptr;
@@ -458,7 +459,7 @@ private:
     // returns true if dst was filled from a prefetched slot
     bool expert_prefetch_copy(ggml_backend_t backend, const ggml_tensor * src, ggml_tensor * dst, ggml_cgraph * graph);
     bool expert_prefetch_init(ggml_backend_t backend);
-    ggml_tensor * expert_prefetch_view(int si, const ggml_tensor * like);
+    ggml_tensor * expert_prefetch_view(int si, const ggml_tensor * like, int64_t n_exp);
 
     // graph reallocations during inference where the backend assignments did not change, split by whether the
     // graph size is the same as the previously scheduled one (unexpected) or different

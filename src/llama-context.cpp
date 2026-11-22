@@ -778,6 +778,9 @@ void llama_context::sched_new(const sched_params & params) {
 
     if (const char * v = getenv("LLAMA_EXPERT_PREFETCH"); v != nullptr && atoi(v) != 0 && params.op_offload) {
         prefetch.enabled = true;
+        if (const char * f = getenv("LLAMA_EXPERT_PREFETCH_FRAC"); f != nullptr) {
+            prefetch.frac = std::clamp((float) atof(f), 0.05f, 1.0f);
+        }
     }
 
     sched_params_cur = params;
@@ -3276,6 +3279,9 @@ bool llama_context::expert_prefetch_init(ggml_backend_t backend) {
     ggml_backend_buffer_type_t buft = ggml_backend_get_default_buffer_type(backend);
     const size_t align = ggml_backend_buft_get_alignment(buft);
     p.slots[0].offset = 0;
+    // only the first frac of the experts of each tensor is prefetched, the rest is uploaded directly
+    size[0] = (size_t) (size[0]*p.frac) + 4*1024*1024;
+    size[1] = (size_t) (size[1]*p.frac) + 4*1024*1024;
     p.slots[0].size   = GGML_PAD(size[0], align);
     p.slots[1].offset = p.slots[0].size;
     p.slots[1].size   = GGML_PAD(size[1], align);
@@ -3310,17 +3316,18 @@ bool llama_context::expert_prefetch_init(ggml_backend_t backend) {
     return true;
 }
 
-ggml_tensor * llama_context::expert_prefetch_view(int si, const ggml_tensor * like) {
+ggml_tensor * llama_context::expert_prefetch_view(int si, const ggml_tensor * like, int64_t n_exp) {
     auto & s = prefetch.slots[si];
+    int64_t ne[GGML_MAX_DIMS] = { like->ne[0], like->ne[1], n_exp, like->ne[3] };
     for (ggml_tensor * v : s.views) {
-        if (v->type == like->type && ggml_are_same_shape(v, like)) {
+        if (v->type == like->type && v->ne[0] == ne[0] && v->ne[1] == ne[1] && v->ne[2] == ne[2] && v->ne[3] == ne[3]) {
             return v;
         }
     }
-    if (ggml_backend_buft_get_alloc_size(ggml_backend_buffer_get_type(prefetch.buf), like) > s.size || s.views.size() >= 16) {
+    if ((size_t) n_exp*like->nb[2] + 4096 > s.size || s.views.size() >= 16) {
         return nullptr;
     }
-    ggml_tensor * v = ggml_new_tensor(prefetch.ctx, like->type, GGML_MAX_DIMS, like->ne);
+    ggml_tensor * v = ggml_new_tensor(prefetch.ctx, like->type, GGML_MAX_DIMS, ne);
     uint8_t * base = (uint8_t *) ggml_backend_buffer_get_base(prefetch.buf) + s.offset;
     if (ggml_backend_tensor_alloc(prefetch.buf, v, base) != GGML_STATUS_SUCCESS) {
         return nullptr;
@@ -3356,12 +3363,27 @@ bool llama_context::expert_prefetch_copy(ggml_backend_t backend, const ggml_tens
     const int si = expert_prefetch_slot_of(src);
     auto & s = p.slots[si];
 
+    const int64_t n_exp  = src->ne[2];
+    const int64_t n_pref = std::max<int64_t>(1, std::min<int64_t>(n_exp, (int64_t) std::ceil(p.frac*n_exp)));
+
     bool served = false;
     if (s.src == src) {
-        ggml_tensor * v = expert_prefetch_view(si, src);
+        ggml_tensor * v = expert_prefetch_view(si, src, n_pref);
         if (v != nullptr) {
             ggml_backend_event_wait(backend, s.uploaded);
-            ggml_backend_tensor_copy_async(backend, backend, v, dst);
+            if (n_pref == n_exp) {
+                ggml_backend_tensor_copy_async(backend, backend, v, dst);
+            } else {
+                // the prefetched experts device to device, the rest from host memory
+                ggml_init_params tp = { /*.mem_size =*/ 2*ggml_tensor_overhead(), /*.mem_buffer =*/ nullptr, /*.no_alloc =*/ true };
+                ggml_context * tctx = ggml_init(tp);
+                ggml_tensor * part = ggml_view_3d(tctx, dst, dst->ne[0], dst->ne[1], n_pref, dst->nb[1], dst->nb[2], 0);
+                if (ggml_backend_view_init(part) == GGML_STATUS_SUCCESS) {
+                    ggml_backend_tensor_copy_async(backend, backend, v, part);
+                }
+                ggml_free(tctx);
+                ggml_backend_tensor_set_async(backend, dst, (const uint8_t *) src->data + n_pref*src->nb[2], n_pref*src->nb[2], (n_exp - n_pref)*src->nb[2]);
+            }
             ggml_backend_event_record(s.released, backend);
             s.has_released = true;
             served = true;
@@ -3385,12 +3407,13 @@ bool llama_context::expert_prefetch_copy(ggml_backend_t backend, const ggml_tens
         }
     }
     if (next != nullptr) {
-        ggml_tensor * v = expert_prefetch_view(si, next);
+        const int64_t n_next = std::max<int64_t>(1, std::min<int64_t>(next->ne[2], (int64_t) std::ceil(p.frac*next->ne[2])));
+        ggml_tensor * v = expert_prefetch_view(si, next, n_next);
         if (v != nullptr) {
             if (s.has_released) {
                 ggml_backend_event_wait(p.copy, s.released);
             }
-            ggml_backend_tensor_set_async(p.copy, v, next->data, 0, ggml_nbytes(next));
+            ggml_backend_tensor_set_async(p.copy, v, next->data, 0, (size_t) n_next*next->nb[2]);
             ggml_backend_event_record(s.uploaded, p.copy);
             s.src = next;
         }
