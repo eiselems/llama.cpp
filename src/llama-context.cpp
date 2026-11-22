@@ -787,6 +787,7 @@ void llama_context::sched_new(const sched_params & params) {
 
     if (const char * v = getenv("LLAMA_EXPERT_PREFETCH"); v != nullptr && atoi(v) != 0 && params.op_offload) {
         prefetch.enabled = true;
+        prefetch.single  = atoi(v) == 3; // 3: one slot shared by all expert tensors (less VRAM)
     }
 
     sched_params_cur = params;
@@ -3262,8 +3263,8 @@ llama_context::expert_prefetch_state::~expert_prefetch_state() {
     }
 }
 
-static int expert_prefetch_slot_of(const ggml_tensor * t) {
-    return strstr(t->name, "down") != nullptr ? 1 : 0;
+static int expert_prefetch_slot_of(const ggml_tensor * t, bool single = false) {
+    return !single && strstr(t->name, "down") != nullptr ? 1 : 0;
 }
 
 bool llama_context::expert_prefetch_init(ggml_backend_t backend) {
@@ -3294,6 +3295,12 @@ bool llama_context::expert_prefetch_init(ggml_backend_t backend) {
     p.slots[0].size   = GGML_PAD(size[0], align);
     p.slots[1].offset = p.slots[0].size;
     p.slots[1].size   = GGML_PAD(size[1], align);
+    if (p.single) {
+        // one slot for the next expert tensor of any kind, sized for the largest
+        p.slots[0].size = GGML_PAD(std::max(size[0], size[1]), align);
+        p.slots[1].offset = p.slots[0].size;
+        p.slots[1].size   = 0;
+    }
 
     auto fail = [&](const char * what) {
         LLAMA_LOG_WARN("%s: expert prefetch disabled: %s\n", __func__, what);
@@ -3368,7 +3375,7 @@ bool llama_context::expert_prefetch_copy(ggml_backend_t backend, const ggml_tens
         return false;
     }
 
-    const int si = expert_prefetch_slot_of(src);
+    const int si = expert_prefetch_slot_of(src, p.single);
     auto & s = p.slots[si];
 
     bool served = false;
@@ -3393,7 +3400,7 @@ bool llama_context::expert_prefetch_copy(ggml_backend_t backend, const ggml_tens
     if (pos < p.order.size() && p.order[pos] == src) {
         for (size_t k = 1; k <= p.order.size(); k++) {
             const ggml_tensor * t = p.order[(pos + k) % p.order.size()];
-            if (expert_prefetch_slot_of(t) == si) {
+            if (expert_prefetch_slot_of(t, p.single) == si) {
                 next = t;
                 break;
             }
