@@ -671,6 +671,13 @@ static best_fattn_kernel ggml_cuda_get_best_fattn_kernel(const int device, const
 
     if (ggml_flash_attn_ext_has_indexed_bias(dst)) {
         const float softcap = ggml_get_op_params_f32(dst, 2);
+        // GGML_CUDA_FATTN_BIAS_VEC=1: single-token decode with the indexed bias in the vec kernel (reads quantized K/V
+        // directly) instead of the tile kernel (converts K/V to F16 first)
+        static const bool bias_vec = [] { const char * v = getenv("GGML_CUDA_FATTN_BIAS_VEC"); return v && atoi(v) != 0; }();
+        if (bias_vec && Q->ne[0] == 128 && Q->ne[1] == 1 && softcap == 0.0f && !dst->src[5] &&
+                K->ne[1] % FATTN_KQ_STRIDE == 0 && ggml_cuda_fattn_kv_type_supported(K->type) && ggml_cuda_fattn_kv_type_supported(V->type)) {
+            return BEST_FATTN_KERNEL_VEC;
+        }
         return (Q->ne[0] == 128 || (Q->ne[0] == 64 && softcap == 0.0f)) ? BEST_FATTN_KERNEL_TILE : BEST_FATTN_KERNEL_NONE;
     }
 

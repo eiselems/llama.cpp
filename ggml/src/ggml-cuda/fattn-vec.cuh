@@ -16,7 +16,9 @@ static constexpr __device__ int ggml_cuda_fattn_vec_get_nthreads_device() {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wpass-failed"
 #endif // __clang__
-template<int D, int ncols, ggml_type type_K, ggml_type type_V, bool use_logit_softcap> // D == head size
+// use_bias: the indexed relative-position bias of FLASH_ATTN_EXT (Inkling 2), a template parameter because the code
+// costs registers even when the bias is absent at runtime
+template<int D, int ncols, ggml_type type_K, ggml_type type_V, bool use_logit_softcap, bool use_bias = false> // D == head size
 __launch_bounds__(ggml_cuda_fattn_vec_get_nthreads_device(), 1)
 static __global__ void flash_attn_ext_vec(
         const char * Q_ptr,
@@ -42,7 +44,6 @@ static __global__ void flash_attn_ext_vec(
                             const int32_t ne31, const int32_t ne32, const int32_t ne33,
                             const int32_t nb31, const int64_t nb32, const int64_t nb33,
         const fattn_indexed_bias bias) {
-    GGML_UNUSED(bias);
     ggml_cuda_pdl_lc();
 #ifdef FLASH_ATTN_AVAILABLE
     const char * GGML_CUDA_RESTRICT Q        = Q_ptr;
@@ -56,7 +57,7 @@ static __global__ void flash_attn_ext_vec(
     GGML_UNUSED(KV_rows_ptr);
 
     // Skip unused kernel variants for faster compilation:
-    if (use_logit_softcap && !(D == 128 || D == 256)) {
+    if ((use_logit_softcap && !(D == 128 || D == 256)) || (use_bias && (D != 128 || ncols != 1))) {
         GGML_UNUSED_VARS(Q, K, V, mask, sinks, KV_max, dst, dst_meta, scale,
             max_bias, m0, m1, n_head_log2, logit_softcap,
             ne00, ne01, ne02, ne03,
@@ -303,7 +304,16 @@ static __global__ void flash_attn_ext_vec(
                 }
 
                 if (mask && (ncols == 1 || ic0 + j < int(ne01.z))) {
-                    sum += slope*__half2float(maskh[j*ne11 + i_KQ]);
+                    float m = __half2float(maskh[j*ne11 + i_KQ]);
+                    if constexpr (use_bias) {
+                        // as in the tile kernel: gather the bias of this query and head by the bin of this KV position
+                        const int64_t query = (int64_t) sequence*ne01.z + ic0 + j;
+                        const int bin = bias.indices[query*(nb31/(int) sizeof(half)) + k_VKQ_0 + i_KQ];
+                        if ((uint32_t) bin < bias.n_bins) {
+                            m = __half2float(__float2half(m + bias.table[(query*bias.n_bins + bin)*ne02 + head]));
+                        }
+                    }
+                    sum += slope*m;
                 }
 
                 KQ_max_new[j] = fmaxf(KQ_max_new[j], sum + FATTN_KQ_MAX_OFFSET);
@@ -555,13 +565,13 @@ static __global__ void flash_attn_ext_vec(
 #pragma clang diagnostic pop
 #endif // __clang__
 
-template <int D, int cols_per_block, ggml_type type_K, ggml_type type_V, bool use_logit_softcap>
+template <int D, int cols_per_block, ggml_type type_K, ggml_type type_V, bool use_logit_softcap, bool use_bias = false>
 void ggml_cuda_flash_attn_ext_vec_case_impl(ggml_backend_cuda_context & ctx, ggml_tensor * dst) {
     const int cc = ggml_cuda_info().devices[ggml_cuda_get_device()].cc;
 
     const int nthreads = ggml_cuda_fattn_vec_get_nthreads_host(cc);
     const int nwarps   = nthreads / WARP_SIZE;
-    fattn_kernel_t fattn_kernel = flash_attn_ext_vec<D, cols_per_block, type_K, type_V, use_logit_softcap>;
+    fattn_kernel_t fattn_kernel = flash_attn_ext_vec<D, cols_per_block, type_K, type_V, use_logit_softcap, use_bias>;
     const bool need_f16_K = type_K == GGML_TYPE_F16;
     const bool need_f16_V = type_V == GGML_TYPE_F16;
     constexpr size_t nbytes_shared = 0;
@@ -578,6 +588,13 @@ void ggml_cuda_flash_attn_ext_vec_case(ggml_backend_cuda_context & ctx, ggml_ten
 
     if (Q->ne[1] == 1) {
         constexpr int cols_per_block = 1;
+        if constexpr (D == 128) {
+            if (dst->src[6] != nullptr) { // indexed relative-position bias, see ggml_cuda_get_best_fattn_kernel
+                GGML_ASSERT(logit_softcap == 0.0f);
+                ggml_cuda_flash_attn_ext_vec_case_impl<D, cols_per_block, type_K, type_V, false, true>(ctx, dst);
+                return;
+            }
+        }
         if (logit_softcap == 0.0f) {
             constexpr bool use_logit_softcap = false;
             ggml_cuda_flash_attn_ext_vec_case_impl<D, cols_per_block, type_K, type_V, use_logit_softcap>(ctx, dst);
