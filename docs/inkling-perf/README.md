@@ -34,6 +34,7 @@ Middle option: `LLAMA_EXPERT_PREFETCH=1 -ub 1536 --moe-cache-mib 2400` = 615.0 /
 decode, VRAM peak 7771 MiB. Prefetch with cache 2800 at -ub 1024 runs out of memory during the 4.8k prompt (7841 MiB).
 Prefetch -ub 2048 with cache 2200 instead of 2000: 661.9 / 921.4 prefill but decode drops to 26.2 / 25.1 (VRAM peak 7815 MiB, too close to the limit); 2000 stays.
 Balanced preset with `-t 5` instead of 6: 572.6 / 678.9 prefill, 33.3 / 31.4 decode - no better, `-t 6` stays.
+Balanced preset at `-ub 1280` (cache 3400): out of memory during the speed runs (7841 MiB peak). About 7.8 GiB is the practical ceiling on this card with the desktop running.
 
 ## Tried and not kept
 
