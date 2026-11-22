@@ -76,6 +76,7 @@ Balanced preset at `-ub 1280` (cache 3400): out of memory during the speed runs 
 | prefetch only the first half of each tensor (LLAMA_EXPERT_PREFETCH_FRAC=0.5), cache 3000, branch `inkling-prefetch-range` | 533.1 / 586.2 prefill, 32.9 / 28.2 decode | worse than S5 and S6: the directly uploaded rest competes with the prefetch stream; smaller slots need the chunk pipeline in NEXT.md |
 | prefetch at -ub 2048 with the MoE cache off (are the cache syncs slowing prefill?) | 591.4 / 901.2 prefill, 18.4 decode vs 676 / 932 with cache 2650 (S12) | no: the cache helps prefill as well |
 
+Theoretical ceilings (measured hardware, model bytes/FLOPs): [THEORY.md](THEORY.md).
 Plan for the next session: [NEXT.md](NEXT.md).
 
 ## Decode plateau (2026-11-22 08:44)
