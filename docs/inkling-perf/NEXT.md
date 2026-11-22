@@ -44,6 +44,10 @@ Follow-up 04:30 (slot sizing fixed on the try branch): with the MoE cache OFF pr
 **Lead:** the host experts are probably NOT pinned (22 GB/s alone does not prove it). cudaMemcpyAsync from pageable
 memory blocks the host thread, so nothing overlaps. First check which buffer type holds the host experts
 (`-lv 4` load log: CPU vs CUDA_Host); pinning them may also speed up the plain upload path.
+**Update 04:34:** pinning ruled out - the host experts are in a `CUDA_Host` (pinned) buffer of 14563 MiB. The real
+cause: the prefetch hit rate is 6 % (62 of 960 expert tensors from staging), so the prototype almost never runs ahead.
+The next-tensor prediction (order of the previous graph, matched by position) does not line up; debug that first by
+logging the src names per position for two consecutive ubatches. The overlap idea itself is still untested.
 Side finding: the MoE cache also speeds up prefill (464 t/s without vs ~575 with a 2600-3000 MiB cache at -ub 1024).
 
 ## 2. Make --fit pick the good preset
