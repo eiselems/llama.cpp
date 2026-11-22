@@ -777,7 +777,8 @@ void llama_context::sched_new(const sched_params & params) {
     ggml_backend_sched_set_realloc_callback(sched.get(), sched_graph_realloc, this);
 
     if (const char * v = getenv("LLAMA_EXPERT_PREFETCH"); v != nullptr && atoi(v) != 0 && params.op_offload) {
-        prefetch.enabled = true;
+        prefetch.enabled   = true;
+        prefetch.gate_only = atoi(v) == 2; // 2: gate/up experts only, one slot (less VRAM)
     }
 
     sched_params_cur = params;
@@ -3278,14 +3279,14 @@ bool llama_context::expert_prefetch_init(ggml_backend_t backend) {
     p.slots[0].offset = 0;
     p.slots[0].size   = GGML_PAD(size[0], align);
     p.slots[1].offset = p.slots[0].size;
-    p.slots[1].size   = GGML_PAD(size[1], align);
+    p.slots[1].size   = p.gate_only ? 0 : GGML_PAD(size[1], align);
 
     auto fail = [&](const char * what) {
         LLAMA_LOG_WARN("%s: expert prefetch disabled: %s\n", __func__, what);
         p.failed = true;
         return false;
     };
-    if (size[0] == 0 || size[1] == 0) {
+    if (size[0] == 0 || (size[1] == 0 && !p.gate_only)) {
         return fail("no host expert tensors");
     }
     p.copy = ggml_backend_dev_init(dev, nullptr);
@@ -3354,6 +3355,9 @@ bool llama_context::expert_prefetch_copy(ggml_backend_t backend, const ggml_tens
     }
 
     const int si = expert_prefetch_slot_of(src);
+    if (si == 1 && p.gate_only) {
+        return false;
+    }
     auto & s = p.slots[si];
 
     bool served = false;

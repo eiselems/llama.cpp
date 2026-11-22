@@ -441,6 +441,7 @@ private:
 
         bool enabled = false;
         bool failed  = false;
+        bool gate_only = false;
         ggml_backend_t compute = nullptr;
         ggml_backend_t copy    = nullptr;               // second backend instance on the same device: its own stream
         ggml_backend_buffer_t buf = nullptr;
