@@ -44,8 +44,8 @@ text { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fil
 <circle class="m1" cx="403.5" cy="232.4" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): 1k prompt 434.4 t/s, VRAM 7441 MiB</title></circle>
 <circle class="m1" cx="500.5" cy="228.2" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): 1k prompt 453.8 t/s, VRAM 7534 MiB</title></circle>
 <circle class="m1" cx="597.5" cy="199.9" r="5"><title>S5 preset: ub 1024 (balanced) (1410a556): 1k prompt 582.4 t/s, VRAM 7758 MiB</title></circle>
-<circle class="m1" cx="694.5" cy="180.0" r="5"><title>S6 LLAMA_EXPERT_PREFETCH=1 (prefill-heavy), cache 2600 (d2514c6ea): 1k prompt 672.9 t/s, VRAM 7753 MiB</title></circle>
-<circle class="m1" cx="791.5" cy="182.8" r="5"><title>S7 LLAMA_EXPERT_PREFETCH=1, ub 2048, cache 2000 (max prefill) (d25dc474): 1k prompt 659.8 t/s, VRAM 7620 MiB</title></circle>
+<circle class="m1" cx="694.5" cy="180.0" r="5"><title>S6 + expert prefetch (opt-in), cache 2600 (d2514c6ea): 1k prompt 672.9 t/s, VRAM 7753 MiB</title></circle>
+<circle class="m1" cx="791.5" cy="182.8" r="5"><title>S7 prefetch + ub 2048, cache 2000 (max prefill) (d25dc474): 1k prompt 659.8 t/s, VRAM 7620 MiB</title></circle>
 <text class="val" x="801.5" y="196.8">659.8</text>
 <polyline class="l2" points="112.5,315.6 209.5,311.0 306.5,310.1 403.5,217.7 500.5,217.5 597.5,177.1 694.5,152.3 791.5,124.5"/>
 <circle class="m2" cx="112.5" cy="315.6" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): 4.8k prompt 56.4 t/s, VRAM 6307 MiB</title></circle>
@@ -54,8 +54,8 @@ text { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fil
 <circle class="m2" cx="403.5" cy="217.7" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): 4.8k prompt 501.3 t/s, VRAM 7441 MiB</title></circle>
 <circle class="m2" cx="500.5" cy="217.5" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): 4.8k prompt 502.5 t/s, VRAM 7534 MiB</title></circle>
 <circle class="m2" cx="597.5" cy="177.1" r="5"><title>S5 preset: ub 1024 (balanced) (1410a556): 4.8k prompt 685.8 t/s, VRAM 7758 MiB</title></circle>
-<circle class="m2" cx="694.5" cy="152.3" r="5"><title>S6 LLAMA_EXPERT_PREFETCH=1 (prefill-heavy), cache 2600 (d2514c6ea): 4.8k prompt 798.5 t/s, VRAM 7753 MiB</title></circle>
-<circle class="m2" cx="791.5" cy="124.5" r="5"><title>S7 LLAMA_EXPERT_PREFETCH=1, ub 2048, cache 2000 (max prefill) (d25dc474): 4.8k prompt 924.9 t/s, VRAM 7620 MiB</title></circle>
+<circle class="m2" cx="694.5" cy="152.3" r="5"><title>S6 + expert prefetch (opt-in), cache 2600 (d2514c6ea): 4.8k prompt 798.5 t/s, VRAM 7753 MiB</title></circle>
+<circle class="m2" cx="791.5" cy="124.5" r="5"><title>S7 prefetch + ub 2048, cache 2000 (max prefill) (d25dc474): 4.8k prompt 924.9 t/s, VRAM 7620 MiB</title></circle>
 <text class="val" x="801.5" y="118.5">924.9</text>
 <text class="tick" x="840" y="98" text-anchor="end">1k prompt: 57.6 -> 659.8 (11.5x)</text>
 <text class="ptitle" x="64" y="376">Decode (token generation, 128 tokens)</text>
@@ -76,8 +76,8 @@ text { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fil
 <circle class="m1" cx="403.5" cy="473.6" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): after 1k 30.1 t/s, VRAM 7441 MiB</title></circle>
 <circle class="m1" cx="500.5" cy="456.0" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): after 1k 34.1 t/s, VRAM 7534 MiB</title></circle>
 <circle class="m1" cx="597.5" cy="456.0" r="5"><title>S5 preset: ub 1024 (balanced) (1410a556): after 1k 34.1 t/s, VRAM 7758 MiB</title></circle>
-<circle class="m1" cx="694.5" cy="467.8" r="5"><title>S6 LLAMA_EXPERT_PREFETCH=1 (prefill-heavy), cache 2600 (d2514c6ea): after 1k 31.4 t/s, VRAM 7753 MiB</title></circle>
-<circle class="m1" cx="791.5" cy="477.5" r="5"><title>S7 LLAMA_EXPERT_PREFETCH=1, ub 2048, cache 2000 (max prefill) (d25dc474): after 1k 29.2 t/s, VRAM 7620 MiB</title></circle>
+<circle class="m1" cx="694.5" cy="467.8" r="5"><title>S6 + expert prefetch (opt-in), cache 2600 (d2514c6ea): after 1k 31.4 t/s, VRAM 7753 MiB</title></circle>
+<circle class="m1" cx="791.5" cy="477.5" r="5"><title>S7 prefetch + ub 2048, cache 2000 (max prefill) (d25dc474): after 1k 29.2 t/s, VRAM 7620 MiB</title></circle>
 <text class="val" x="801.5" y="471.5">29.2</text>
 <polyline class="l2" points="112.5,529.9 209.5,499.1 306.5,486.8 403.5,478.8 500.5,461.7 597.5,464.8 694.5,474.9 791.5,488.5"/>
 <circle class="m2" cx="112.5" cy="529.9" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): after 4.8k 17.3 t/s, VRAM 6307 MiB</title></circle>
@@ -86,8 +86,8 @@ text { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fil
 <circle class="m2" cx="403.5" cy="478.8" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): after 4.8k 28.9 t/s, VRAM 7441 MiB</title></circle>
 <circle class="m2" cx="500.5" cy="461.7" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): after 4.8k 32.8 t/s, VRAM 7534 MiB</title></circle>
 <circle class="m2" cx="597.5" cy="464.8" r="5"><title>S5 preset: ub 1024 (balanced) (1410a556): after 4.8k 32.1 t/s, VRAM 7758 MiB</title></circle>
-<circle class="m2" cx="694.5" cy="474.9" r="5"><title>S6 LLAMA_EXPERT_PREFETCH=1 (prefill-heavy), cache 2600 (d2514c6ea): after 4.8k 29.8 t/s, VRAM 7753 MiB</title></circle>
-<circle class="m2" cx="791.5" cy="488.5" r="5"><title>S7 LLAMA_EXPERT_PREFETCH=1, ub 2048, cache 2000 (max prefill) (d25dc474): after 4.8k 26.7 t/s, VRAM 7620 MiB</title></circle>
+<circle class="m2" cx="694.5" cy="474.9" r="5"><title>S6 + expert prefetch (opt-in), cache 2600 (d2514c6ea): after 4.8k 29.8 t/s, VRAM 7753 MiB</title></circle>
+<circle class="m2" cx="791.5" cy="488.5" r="5"><title>S7 prefetch + ub 2048, cache 2000 (max prefill) (d25dc474): after 4.8k 26.7 t/s, VRAM 7620 MiB</title></circle>
 <text class="val" x="801.5" y="502.5">26.7</text>
 <text class="tick" x="840" y="376" text-anchor="end">after 1k: 18 -> 29.2 (1.6x)</text>
 <text class="ptitle" x="112.5" y="622" text-anchor="middle" style="font-size:12px">S0</text>
@@ -113,13 +113,13 @@ text { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fil
 <text class="tick" x="597.5" y="636" text-anchor="middle">preset: ub 1024</text>
 <text class="tick" x="597.5" y="649" text-anchor="middle">(balanced)</text>
 <text class="ptitle" x="694.5" y="622" text-anchor="middle" style="font-size:12px">S6</text>
-<text class="tick" x="694.5" y="636" text-anchor="middle">LLAMA_EXPERT_PR</text>
-<text class="tick" x="694.5" y="649" text-anchor="middle">EFETCH=1</text>
-<text class="tick" x="694.5" y="662" text-anchor="middle">(prefill-</text>
+<text class="tick" x="694.5" y="636" text-anchor="middle">+ expert</text>
+<text class="tick" x="694.5" y="649" text-anchor="middle">prefetch (opt-</text>
+<text class="tick" x="694.5" y="662" text-anchor="middle">in), cache 2600</text>
 <text class="ptitle" x="791.5" y="622" text-anchor="middle" style="font-size:12px">S7</text>
-<text class="tick" x="791.5" y="636" text-anchor="middle">LLAMA_EXPERT_PR</text>
-<text class="tick" x="791.5" y="649" text-anchor="middle">EFETCH=1, ub</text>
-<text class="tick" x="791.5" y="662" text-anchor="middle">2048, cache</text>
+<text class="tick" x="791.5" y="636" text-anchor="middle">prefetch + ub</text>
+<text class="tick" x="791.5" y="649" text-anchor="middle">2048, cache</text>
+<text class="tick" x="791.5" y="662" text-anchor="middle">2000 (max</text>
 <line class="l1" x1="64" x2="86" y1="64" y2="64"/>
 <circle class="m1" cx="75" cy="64" r="4"/>
 <text x="92" y="68">1k-token prompt</text>
