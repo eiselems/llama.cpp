@@ -182,3 +182,19 @@ E9 result (18:00-18:25, branch `inkling-try-loop-fill`, `LLAMA_MOE_CACHE_LOOP_FI
 c1 decode 38.5 / 37.9 / 38.2 / 37.6 / 38.5, prefill unchanged (367 / 379 / 389), needles 3/3. **Rejected** (-1.6 %).
 Likely: pending background fills are committed at the next layer's copy, which synchronizes the fill event, so the
 extra uploads land on the critical path. Needs per-fill events and a commit at the later pass; not pursued now.
+
+### Idea 9: IQ4_NL instead of UD-Q4_K_M (18:30-19:10)
+
+The UD file keeps 32 dense tensors in BF16 (IQ4_NL: Q8_0) and its experts in NVFP4 (the 3070 converts them);
+IQ4_NL has IQ4_NL experts (last 4 layers Q8_0) and is 1 GB bigger. Five-run A/B per preset, `--long 38000`:
+
+| preset | quant | c1 decode | prefill 958 / 4,724 / 29.7k | decode after 29.7k | VRAM peak |
+|---|---|---:|---:|---:|---:|
+| S18 | UD-Q4_K_M (ctl 1-3) | 33.68 / 33.59 / 33.76 | 856-861 / 1,054-1,059 / 1,039-1,040 | 24.8-25.0 | 6.85 GiB |
+| S18 | **IQ4_NL** (a, b) | **35.82 / 35.61** | **873 / 1,073 / 1,054** | 26.5-26.7 | 7.25 GiB |
+| S16 | UD-Q4_K_M (ctl 1-3) | 38.54 / 38.36 / 38.45 | 367-368 / 379 / 389 | 28.8-31.0 | 7.48 GiB |
+| S16 | **IQ4_NL** (a, b) | **38.60 / 39.36** | **487-495 / 570-572 / 566-569** | 29.0-31.2 | 7.29 GiB |
+
+Gates PASS, needles 3/3 on all runs. **Accepted for speed**: S19 = S18 on IQ4_NL (+6 % decode, +1.5 % prefill),
+S20 = S16 on IQ4_NL (+1 % decode, +33-51 % prefill). Not yet checked: answer quality of IQ4_NL on the card eval
+(the gate and the needles only test short answers and retrieval).
