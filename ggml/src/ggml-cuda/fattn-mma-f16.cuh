@@ -622,7 +622,7 @@ static __device__ __forceinline__ float flash_attn_ext_f16_bias(
         const fattn_mma_bias_ctx & bctx, float m, const int jq, const int k, const uint3 ne01, const int ne02, const int stride_mask) {
     if (jq < int(ne01.z)) {
         const int64_t query = (int64_t) bctx.sequence*ne01.z + jq;
-        const int bin = bctx.bias.indices[query*stride_mask + k];
+        const int bin = fattn_bias_bin(bctx.bias, query, bctx.sequence, jq, k, stride_mask);
         if ((uint32_t) bin < bctx.bias.n_bins) {
             m = __half2float(__float2half(m + bctx.bias.table[(query*bctx.bias.n_bins + bin)*ne02 + bctx.head]));
         }

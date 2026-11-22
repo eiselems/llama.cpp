@@ -803,6 +803,7 @@ public:
     llm_graph_input_rs           * get_recr() const { return inp_rs.get(); }
 
     // distance from the token to the cell, extent for the empty, future and more distant cells
+    bool bias_positions = false;              // LLAMA_ATTN_BIAS_POSITIONS: the tensors below hold positions [n_kv, 2*n_stream]
     ggml_tensor * self_rel_pos     = nullptr; // I32 [n_kv,     n_batch]
     ggml_tensor * self_rel_pos_swa = nullptr; // I32 [n_kv_swa, n_batch]
 

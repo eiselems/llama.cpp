@@ -16799,6 +16799,10 @@ static bool ggml_backend_vk_device_supports_op(ggml_backend_dev_t dev, const ggm
             {
                 // Only the indexed-bias scalar kernel reads row lists.
                 const bool indexed_bias = ggml_flash_attn_ext_has_indexed_bias(op);
+                // the bias index derived from positions is implemented by the CUDA backend only
+                if (indexed_bias && ggml_flash_attn_ext_bias_from_positions(op)) {
+                    return false;
+                }
                 if (op->src[5] && (!indexed_bias || device->properties.limits.maxPerStageDescriptorStorageBuffers < 9 ||
                         device->properties.limits.maxDescriptorSetStorageBuffers < 9)) {
                     return false;
