@@ -3,6 +3,12 @@
 # Safe to run while other work is in progress: unrelated changes in the worktree are left untouched.
 set -u
 cd "$(dirname "$0")/.." || exit 1
+# only publish from the main perf branch, never from a try branch (it would push untested commits)
+branch=$(git symbolic-ref --short -q HEAD)
+if [ "$branch" != "inkling-2-perf-improvement" ]; then
+    echo "not publishing: on branch '${branch:-detached}', expected inkling-2-perf-improvement" >&2
+    exit 1
+fi
 python3 -I scripts/inkling-perf-chart.py || exit 1
 paths=(docs/inkling-perf scripts/inkling-bench.sh scripts/inkling-perf-chart.py scripts/inkling-perf-publish.sh)
 git add -- "${paths[@]}"
