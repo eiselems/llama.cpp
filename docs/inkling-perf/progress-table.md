@@ -4,3 +4,4 @@
 | S1 | + MoE cache dedup (adishik 65dd939f) | `2438cefc` | 6596 | 70.7 | 77.1 | 24.7 | 24.3 |
 | S2 | + fused glue ops + FA bias (#32740), same flags | `4fb181db` | 6420 | 74.1 | 81.5 | 27.4 | 27.1 |
 | S3 | op-offload on (views fix), ub512, cache 3400 | `4fb181db` | 7441 | 434.4 | 501.3 | 30.1 | 28.9 |
+| S4 | + dedup with CPU share 0.7 | `2ecddfadf` | 7534 | 453.8 | 502.5 | 34.1 | 32.8 |
