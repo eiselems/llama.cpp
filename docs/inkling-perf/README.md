@@ -105,6 +105,9 @@ Theoretical ceilings (measured hardware, model bytes/FLOPs): [THEORY.md](THEORY.
 | thread polling on S13 (`--poll 100`, `--cpu-strict 1`) | decode 37.5 / 37.5 vs 37.2 / 37.2 | inside noise |
 | `-t 5` / `--poll 100` on S16 | decode 37.8 / 38.2 vs 38.9 / 38.4 | slower / neutral |
 
+| OpenMP wait policy on S13 (`OMP_WAIT_POLICY=ACTIVE`, `GOMP_SPINCOUNT=INFINITE`) | decode 37.7 / 37.3 vs 37.7 / 37.2 | neutral |
+| E6: relative-position bias in the vec FA kernel for decode (`GGML_CUDA_FATTN_BIAS_VEC=1`), branch `inkling-try-fattn-vec-bias` | decode 37.2 / 37.4 vs 37.7 / 37.8 / 37.8 | -1 %: with GQA 3 the vec kernel decodes q4_0 K/V once per Q head (0.78 vs 0.69 ms/token) |
+
 Current status and ranked next levers: STATUS section of [PLAN.md](PLAN.md). Older plan: [NEXT.md](NEXT.md).
 
 ## Decode plateau (2026-11-22 08:44)
