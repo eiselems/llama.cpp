@@ -2568,6 +2568,7 @@ struct llama_model_inkling2_loop : public llama_model_inkling2 {
     void load_arch_tensors(llama_model_loader & ml) override;
     void post_arch_tensors(llama_model_loader & ml) override;
     void post_load_tensors() override;
+    void copy_weight_entries(const ggml_tensor * w, const ggml_tensor * view);
 
     int n_layer_phys() const override { return n_phys; }
     int layer_phys(int il) const;

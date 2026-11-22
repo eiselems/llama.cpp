@@ -76,6 +76,21 @@ void llama_model_inkling2_loop::post_arch_tensors(llama_model_loader &) {
 // with the MoE expert upload, #32710 / #32755). A view per pass is an input of its own split and gets its own short-lived
 // copy. Views keep the name (LoRA adapters look weights up by name) and the buffer (the scheduler places ops by it).
 // Ported from unslothai/llama.cpp 3b34f4f2ff (oobabooga).
+void llama_model_inkling2_loop::copy_weight_entries(const ggml_tensor * w, const ggml_tensor * view) {
+    auto copy = [&](auto & map) {
+        if (const auto it = map.find(w); it != map.end()) {
+            const auto value = it->second;
+            map[view] = value;
+        }
+    };
+    // without the scales the later passes would read NVFP4 experts unscaled (the bug fixed for the slots in #32704)
+    copy(w_scales);
+    copy(prec_policy.prec_acc);
+    copy(prec_policy.prec_src1);
+    copy(hdmd.rot);
+    copy(hdmd.inv);
+}
+
 void llama_model_inkling2_loop::post_load_tensors() {
     static_assert(sizeof(llama_layer) % sizeof(ggml_tensor *) == 0, "llama_layer must hold only tensor pointers");
     constexpr size_t n_ptr = sizeof(llama_layer) / sizeof(ggml_tensor *);
@@ -111,6 +126,8 @@ void llama_model_inkling2_loop::post_load_tensors() {
                 // memory-fit pass: the weights have a dummy buffer and no data
                 view->buffer = w[k]->buffer;
             }
+            // the per-weight lookups are keyed by tensor: give the view the entries of its weight
+            copy_weight_entries(w[k], view);
             w[k] = view;
         }
     }
