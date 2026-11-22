@@ -350,6 +350,11 @@ struct llama_moe_cache::impl {
     struct device {
         ggml_backend_t backend;
         ggml_backend_buffer_type_t buft;
+        // LLAMA_MOE_CACHE_ASYNC_FILL: second backend on the device (own stream) that fills cache slots in the background
+        ggml_backend_t       fill_backend = nullptr;
+        ggml_backend_event_t ev_compute   = nullptr; // compute stream position the fill must wait for
+        ggml_backend_event_t ev_fill      = nullptr; // fills of the last copy() done
+        bool fill_failed = false;
         size_t host_bytes = 0; // host experts of the layers it caches
         double split = 0.0;    // share of the budget
 
@@ -402,6 +407,19 @@ struct llama_moe_cache::impl {
     stats stats_large;
     stats stats_copy;  // experts copied from the cache for large batches
 
+    // background fills: the expert is computed on the CPU for the token that missed it, and its slot is uploaded on the
+    // fill stream; the slot map points to the slot from the next plan on, once the upload is known to be done
+    struct pending_fill {
+        int32_t ig;      // group
+        int32_t key_il;  // key layer (the slot map that gets the entry)
+        int32_t expert;
+        int32_t slot;
+        int32_t dev;
+    };
+    std::vector<pending_fill> pending;
+    bool async_fill = false;
+    size_t n_async_fill = 0;
+
     std::vector<device> devices;
     std::vector<group> groups;
     std::vector<layer> layers;
@@ -453,6 +471,9 @@ struct llama_moe_cache::impl {
             throw std::runtime_error("MoE cache requires a MoE model");
         }
 
+        if (const char * v = getenv("LLAMA_MOE_CACHE_ASYNC_FILL"); v != nullptr && atoi(v) != 0) {
+            async_fill = true;
+        }
         if (const char * v = getenv("LLAMA_MOE_CACHE_DEDUP"); v != nullptr && *v != '\0') {
             dedup = std::clamp(atoi(v), 0, 2);
         }
@@ -765,6 +786,23 @@ struct llama_moe_cache::impl {
 
     ~impl() {
         log_stats();
+        if (n_async_fill > 0) {
+            LLAMA_LOG_INFO("llama_moe_cache: %zu experts filled in the background\n", n_async_fill);
+        }
+        for (auto & d : devices) {
+            if (d.fill_backend) {
+                ggml_backend_synchronize(d.fill_backend);
+            }
+            if (d.ev_compute) {
+                ggml_backend_event_free(d.ev_compute);
+            }
+            if (d.ev_fill) {
+                ggml_backend_event_free(d.ev_fill);
+            }
+            if (d.fill_backend) {
+                ggml_backend_free(d.fill_backend);
+            }
+        }
         if (trace != nullptr) {
             fclose(trace);
         }
@@ -889,6 +927,24 @@ struct llama_moe_cache::impl {
         ggml_backend_tensor_get_async(backend, sel, ids.data(), 0, ggml_nbytes(sel));
         ggml_backend_synchronize(backend);
 
+        // background fills of earlier plans: wait for their uploads (long done in practice), then point the slot maps at
+        // them; after the synchronize above, so no slot map upload of an earlier copy is still reading the host data
+        if (!pending.empty()) {
+            for (auto & d : devices) {
+                if (d.ev_fill != nullptr) {
+                    ggml_backend_event_synchronize(d.ev_fill);
+                }
+            }
+            for (const auto & f : pending) {
+                group & gf = groups[f.ig];
+                // the slot still holds the key it was filled for, unless a later plan evicted it meanwhile
+                if (gf.lru.key_of[f.slot] == gf.lru.make_key(f.key_il, f.expert)) {
+                    gf.lru.slot_map[f.key_il][f.expert] = f.slot;
+                }
+            }
+            pending.clear();
+        }
+
         if (trace != nullptr) {
             write_trace(il, n_used);
         }
@@ -903,6 +959,28 @@ struct llama_moe_cache::impl {
         size_t n_hit = 0;
         if (!g.lru.plan(il, ids.data(), ids.size(), sel->src[0]->ne[1], n_used, n_zero, n_cpu, fills, cpu, n_hit)) {
             GGML_ABORT("the MoE cache is too small for the experts selected in layer %d", il);
+        }
+
+        // background fill (decode only: one token, so the zero slots are simply the next free ones after the CPU experts)
+        bg_fills.clear();
+        if (async_fill && has_cpu && share_q > 0 && sel->src[0]->ne[1] == 1 && !fills.empty() && ensure_fill_backend(g.id)) {
+            const int32_t key_il = g.lru.key_layer_of[il];
+            int32_t * slots = g.lru.slot_map[key_il];
+            int32_t z = (int32_t) cpu.size();
+            size_t keep = 0;
+            for (const auto & f : fills) {
+                if (z >= n_zero) {
+                    fills[keep++] = f; // no zero slot left: upload as before
+                    continue;
+                }
+                bg_fills.push_back(f);
+                slots[f.expert] = g.lru.n_slots + z; // this token: computed on the CPU, the device reads a zero slot
+                cpu.push_back({ f.expert, g.lru.n_slots + z });
+                pending.push_back({ l.ig, key_il, f.expert, f.slot, g.id });
+                z++;
+            }
+            fills.resize(keep);
+            n_async_fill += bg_fills.size();
         }
         if (has_cpu) {
             int32_t * cpu_map = (int32_t *) l.cpu_map->data;
@@ -933,6 +1011,23 @@ struct llama_moe_cache::impl {
             }
         }
 
+        if (!bg_fills.empty()) {
+            device & d = devices[g.id];
+            // the fill overwrites slots whose previous experts earlier graphs may still read: wait for those
+            ggml_backend_event_record(d.ev_compute, backend);
+            ggml_backend_event_wait(d.fill_backend, d.ev_compute);
+            for (size_t ip = 0; ip < l.experts.size(); ++ip) {
+                const ggml_tensor * w    = l.experts[ip];
+                ggml_tensor       * bank = g.banks[ip];
+                const size_t expert_size = w->nb[2];
+                for (const auto & f : bg_fills) {
+                    ggml_backend_tensor_set_async(d.fill_backend, bank, (const uint8_t *) w->data + f.expert*expert_size, f.slot*expert_size, expert_size);
+                    bytes += expert_size;
+                }
+            }
+            ggml_backend_event_record(d.ev_fill, d.fill_backend);
+        }
+
         stats & st = ids.size() <= (size_t) 8*n_expert_used ? stats_small : stats_large;
         st.hits   += n_hit;
         st.misses += fills.size() + cpu.size();
@@ -946,6 +1041,28 @@ struct llama_moe_cache::impl {
         // of the key layer before plan() changes its data; a pageable-memory H2D copy may also be staged at once
         ggml_backend_tensor_set_async(backend, dst, g.lru.slot_map[il], 0, ggml_nbytes(l.slot_map));
 
+        return true;
+    }
+
+    std::vector<moe_cache_lru::fill> bg_fills;
+
+    bool ensure_fill_backend(int32_t id) {
+        device & d = devices[id];
+        if (d.fill_backend != nullptr || d.fill_failed) {
+            return d.fill_backend != nullptr;
+        }
+        ggml_backend_dev_t dev = ggml_backend_get_device(d.backend);
+        d.fill_backend = ggml_backend_dev_init(dev, nullptr);
+        if (d.fill_backend != nullptr) {
+            d.ev_compute = ggml_backend_event_new(dev);
+            d.ev_fill    = ggml_backend_event_new(dev);
+        }
+        if (d.fill_backend == nullptr || d.ev_compute == nullptr || d.ev_fill == nullptr) {
+            LLAMA_LOG_WARN("llama_moe_cache: background fill disabled on %s (no second stream or events)\n", ggml_backend_dev_name(dev));
+            d.fill_failed = true;
+            return false;
+        }
+        LLAMA_LOG_INFO("llama_moe_cache: background fill enabled on %s\n", ggml_backend_dev_name(dev));
         return true;
     }
 
