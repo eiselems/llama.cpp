@@ -17,6 +17,21 @@ The same numbers as a table: [progress-table.md](progress-table.md) (raw: [progr
 | **1024** | **3400** | 7758 | **582.4** | **685.8** | **34.1** | **32.1** |
 | 2048 | 2400 | 7226 | 548.5 | 776.3 | 30.8 | 27.8 |
 | 2048 | 2800 | 7626 | 568.5 | 785.1 | 32.0 | 29.3 |
+| 4096 | 1600 | 7808 | 522.1 | 730.0 | 26.4 | 23.5 |
+| 4096 | 2000 | OOM (2.4 GiB compute buffer) | - | - | - | - |
+
+-ub 4096 loses: the bigger compute buffer forces a small cache, and the saved uploads do not make up for it.
 
 Recommended everyday preset:
 `--fit off -ngl all -cmoe -b 2048 -ub 1024 --moe-cache-mib 3400 --moe-cache-cpu-share 0.7 -fa on -ctk q8_0 -ctv q8_0 -c 32768`
+
+## Tried and not kept
+
+| what | result | why |
+|---|---|---|
+| PR #32752 (mask in chunks) | not applied | superseded by #32740 (bias inside flash attention) |
+| PR #32076 (MoE cache without syncs) | crashes with dedup (illegal memory access); without dedup 19.7 vs 20.0 t/s | no gain on Linux CUDA, conflicts with dedup; local branch `inkling-perf-32076-wip` |
+| -ub 4096 | 522 / 730 t/s prefill, 26.4 t/s decode at cache 1600; cache 2000 OOM | compute buffer too big for 8 GB |
+| DSpark speculative decoding (PR #32218 + #32773), draft n 3 / 2, cache 2400 | 23.5 / 31.3 t/s decode vs 34.1 without; acceptance 44-55 % at T=1 | the draft needs ~0.5 GiB VRAM (smaller MoE cache), and 3-4 token verification batches select more experts (more misses); local branch `inkling-dspark-try` |
+
+Plan for the next session: [NEXT.md](NEXT.md).
