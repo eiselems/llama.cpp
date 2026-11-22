@@ -6,6 +6,23 @@ Every row is measured with `scripts/inkling-bench.sh` (one server session: greed
 
 ![prefill and decode per step](progress.svg)
 
+## Presets (2026-11-22 08:35)
+
+VRAM peaks include the desktop. Check the idle GPU use first (`nvidia-smi`): it was ~1070 MiB on the evening of
+2026-11-21 (heavy desktop) and ~560 MiB on the morning of 2026-11-22 (light desktop). The cache must shrink by about
+the difference on a heavy desktop, or the server runs out of memory.
+
+Common flags: `--fit off -ngl all -cmoe -b 2048 --moe-cache-cpu-share 0.7 -fa on -ctk q8_0 -ctv q8_0 -c 32768`
+
+| preset | env | -ub | cache MiB (light / heavy desktop) | prefill 1k / 4.8k | decode @1k / @4.8k |
+|---|---|---:|---|---:|---:|
+| **balanced** (S8) | `LLAMA_EXPERT_PREFETCH=3` | 1024 | 3400 / 3000 | 632 / 724 (3000: 635 / 720) | 33.9 / 31.8 (3000: 33.2 / 30.9) |
+| **max prefill** (S9) | `LLAMA_EXPERT_PREFETCH=1` | 2048 | 2400 / 2000 | 665 / 935 (2000: 663 / 930) | 31.1 / 28.5 (2000: 29.3 / 27.5) |
+| no prefetch (S5) | - | 1024 | 3400 / 3000 | 582 / 686 | 33.6 / 32.0 |
+
+Other measured option: `LLAMA_EXPERT_PREFETCH=3 -ub 2048 --moe-cache-mib 2800` (light desktop) = 632 / 908 prefill,
+32.2 / 29.3 decode - nearly max prefill with better decode.
+
 The same numbers as a table: [progress-table.md](progress-table.md) (raw: [progress.tsv](progress.tsv)).
 
 ## ubatch x cache sweep (CPU share 0.7, commit 1410a556)
