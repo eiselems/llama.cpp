@@ -177,3 +177,8 @@ Pass-to-pass reuse already works through the shared keys, except for the CPU-com
 in the background). Estimated ~1 ms/token saved of ~26 = +3-4 % decode, if the background uploads stay
 off the critical path. The other 77 % of the misses are capacity misses (evicted within 64 tokens), which
 prediction does not fix.
+
+E9 result (18:00-18:25, branch `inkling-try-loop-fill`, `LLAMA_MOE_CACHE_LOOP_FILL=1`, S16, ctl / fill / ctl / fill / ctl):
+c1 decode 38.5 / 37.9 / 38.2 / 37.6 / 38.5, prefill unchanged (367 / 379 / 389), needles 3/3. **Rejected** (-1.6 %).
+Likely: pending background fills are committed at the next layer's copy, which synchronizes the fill event, so the
+extra uploads land on the critical path. Needs per-fill events and a commit at the later pass; not pursued now.
