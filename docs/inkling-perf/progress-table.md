@@ -11,3 +11,4 @@
 | S8 | single-slot prefetch, cache 3400 (new balanced) | `dee6c0f51` | 7692 | 632.4 | 723.9 | 33.9 | 31.8 |
 | S9 | prefetch ub 2048, cache 2400 (max prefill, light desktop) | `aff1063b1` | 7504 | 664.5 | 934.5 | 31.1 | 28.5 |
 | S10 | balanced + q4_0 KV, cache 3650 | `dafda2ad7` | 7604 | 637.5 | 723.9 | 35.2 | 33 |
+| S11 | 2-slot prefetch + q4_0 KV, cache 3200 | `355ff0d1d` | 7502 | 682.2 | 802.2 | 33.4 | 31.6 |

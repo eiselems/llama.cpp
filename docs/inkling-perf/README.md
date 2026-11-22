@@ -14,12 +14,13 @@ the difference on a heavy desktop, or the server runs out of memory.
 
 Common flags: `--fit off -ngl all -cmoe -b 2048 --moe-cache-cpu-share 0.7 -fa on -ctk q8_0 -ctv q8_0 -c 32768`
 
-| preset | env | -ub | cache MiB (light / heavy desktop) | prefill 1k / 4.8k | decode @1k / @4.8k |
-|---|---|---:|---|---:|---:|
-| **balanced** (S8) | `LLAMA_EXPERT_PREFETCH=3` | 1024 | 3400 / 3000 | 632 / 724 (3000: 635 / 720) | 33.9 / 31.8 (3000: 33.2 / 30.9) |
-| **max prefill** (S9) | `LLAMA_EXPERT_PREFETCH=1` | 2048 | 2400 / 2000 | 665 / 935 (2000: 663 / 930) | 31.1 / 28.5 (2000: 29.3 / 27.5) |
-| no prefetch (S5) | - | 1024 | 3400 / 3000 | 582 / 686 | 33.6 / 32.0 |
-| **balanced, q4_0 KV** (S10) | `LLAMA_EXPERT_PREFETCH=3` + `-ctk q4_0 -ctv q4_0` | 1024 | 3650 / ~3150 | 638 / 724 | **35.2 / 33.0** |
+| preset | env + extra flags | -ub | cache MiB (light / heavy desktop) | prefill 1k / 4.8k | decode @1k / @4.8k | VRAM peak (light) |
+|---|---|---:|---|---:|---:|---:|
+| **decode first** (S10) | `LLAMA_EXPERT_PREFETCH=3`, `-ctk q4_0 -ctv q4_0` | 1024 | 3650 / ~3150 | 638 / 724 | **35.2 / 33.0** | 7604 |
+| **balanced** (S11) | `LLAMA_EXPERT_PREFETCH=1`, `-ctk q4_0 -ctv q4_0` | 1024 | 3200 / ~2700 | 682 / 802 | 33.4 / 31.6 | 7502 |
+| **max prefill** (S9) | `LLAMA_EXPERT_PREFETCH=1` | 2048 | 2400 / 2000 | 665 / **935** | 31.1 / 28.5 | 7504 |
+| q8_0 KV, single slot (S8) | `LLAMA_EXPERT_PREFETCH=3` | 1024 | 3400 / 3000 | 632 / 724 | 33.9 / 31.8 | 7692 |
+| no prefetch (S5) | - | 1024 | 3400 / 3000 | 582 / 686 | 33.6 / 32.0 | 7246 |
 
 q4_0 KV quality check (wikitext-2, -c 4096, 6 chunks): PPL 5.7909 +/- 0.121 vs 5.7771 +/- 0.120 with q8_0 (+0.24 %,
 within the error). It frees ~270 MiB at 32k context, which goes to the MoE cache.
@@ -74,3 +75,11 @@ Balanced preset at `-ub 1280` (cache 3400): out of memory during the speed runs 
 | prefetch only the first half of each tensor (LLAMA_EXPERT_PREFETCH_FRAC=0.5), cache 3000, branch `inkling-prefetch-range` | 533.1 / 586.2 prefill, 32.9 / 28.2 decode | worse than S5 and S6: the directly uploaded rest competes with the prefetch stream; smaller slots need the chunk pipeline in NEXT.md |
 
 Plan for the next session: [NEXT.md](NEXT.md).
+
+## Decode plateau (2026-11-22 08:44)
+
+On the S10 preset, CPU share 0.6 / 0.7 / 0.8 and cache 3650 / 3900 all land at 34.3-35.2 t/s (noise).
+Cache stats during decode (`-lv 4`): hit rate 83 %; of the misses ~2/3 run on the CPU, ~1/3 are uploaded
+(~21 experts per token). Each of the 48 layer applications also syncs once to read the router ids, which leaves the
+GPU idle while the host plans the cache. More decode needs that sync removed (PR #32076's idea, which crashes with
+dedup today), not more config.
