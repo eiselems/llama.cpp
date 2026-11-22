@@ -154,3 +154,4 @@ Updated lever list (16:05):
    prefill at -ub 2048 and dominated by this; also helps the decode attention (E6 lost to it as well).
 2. Fewer small GPU kernels per decode token (~7 ms/token in ~3,000 kernels).
 3. Scheduler: copy the CPU split's inputs before the expert phase, then retry E5.
+| 16:30-16:50 | E8: bias bin derived from positions in the FA kernel (`LLAMA_ATTN_BIAS_POSITIONS=1`, ggml_flash_attn_ext_add_position_bias), S17; ctl / pos / ctl / pos / ctl, `--long 38000` | prefill 29.7k 895 / **1,038** / 883 / **1,039** / 883 (+16 %); 4,724 tok 988 / **1,057** / 989 / **1,057** / 992 (+7 %); 958 tok 843 / 861 / 841 / 862 / 846 (+2 %); c1 33.6 / 33.5 / 33.3 / 33.4 / 33.4; decode after 29.7k 25.1 / 24.5 / 25.2 / 25.2 / 23.4; VRAM 7.13 -> 6.85 GiB; gates PASS, needles 3/3 | **accepted**: merged 58797ab4f, preset S18 = S17 + E8 |

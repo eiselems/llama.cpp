@@ -11,6 +11,7 @@ checks are recorded. Full experiment log and status: [PLAN.md](PLAN.md); ceiling
 | goal | preset | prefill 958 / 4,724 tok | decode (median of 6) | VRAM peak | start |
 |---|---|---:|---:|---:|---|
 | **max prefill** | **S15** | 850 / **1,003** | 33.2 | 7.13 GiB | `scripts/inkling/serve.sh start S15` |
+| **max prefill (new best)** | **S18** | 861 / **1,057** (29.7k: **1,039**) | 33.4 | 6.85 GiB | `scripts/inkling/serve.sh start S18` |
 | **max prefill, long prompts** | **S17** | 845 / 996 (29.7k: **903**) | 33.6 | 7.13 GiB | `scripts/inkling/serve.sh start S17` |
 | **max decode** (prefill halves) | **S16** | 367 / 379 | **38.6** | 7.48 GiB | `scripts/inkling/serve.sh start S16` |
 | **balanced: decode first** | S13 | 689 / 734 | 37.8 | 7.35 GiB | `scripts/inkling/serve.sh start S13` |
