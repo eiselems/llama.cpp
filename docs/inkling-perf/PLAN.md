@@ -86,3 +86,5 @@ Decode also moved from the vec kernel to the tile kernel (0.4 ms/token here).
 Consequence for the levers: at -ub 2048 better upload overlap has little left (0.65 s of upload not overlapped);
 attention in an MMA kernel is the biggest prefill lever there. At -ub 1024 (S11) prefill is still upload bound,
 so skipping experts that are already in the MoE cache (step 4) should help there.
+
+| 11:50-12:10 | E2 (step 4): prefetch skips experts already in the MoE cache, opt-in LLAMA_EXPERT_PREFETCH_SKIP=1, S11; ctl / skip / ctl / skip / ctl | prefill 958 tok 745.8 / **859.5** / 744.7 / **857.5** / 745.8 (+15 %), 4,724 tok 819.8 / **913.2** / 819.8 / **912.9** / 820.1 (+11 %); c1 decode 35.7 / 35.8 / 35.7 / 35.9 / 35.2; decode after the 29.7k needle prompt 29.0 / **27.0** / 28.9 / **27.3** / 28.8 (-6 %, reproducible); gate PASS, needles 3/3 | **rejected for now** (3 % rule): big prefill win, but decode after long prompts drops 6 % for a reason not found yet (skip mode does not touch decode; VRAM peak identical). Branch `inkling-try-prefetch-skip`. Worth a follow-up |
