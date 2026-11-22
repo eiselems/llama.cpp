@@ -79,6 +79,7 @@ Balanced preset at `-ub 1280` (cache 3400): out of memory during the speed runs 
 Hill-climb log with every experiment (2026-11-22 from 11:15, bench.py harness): [PLAN.md](PLAN.md).
 
 Theoretical ceilings (measured hardware, model bytes/FLOPs): [THEORY.md](THEORY.md).| E1: large batches skip reading the router ids back before the expert upload (`LLAMA_EXPERT_COPY_NOSYNC=1`), S12, branch `inkling-try-copy-nosync` | prefill 4.7k 952.8 vs controls 954.4 / 953.0 | neutral: with prefetch the expert weights never take this path |
+| E2: prefetch skips experts already in the MoE cache (`LLAMA_EXPERT_PREFETCH_SKIP=1`), S11, branch `inkling-try-prefetch-skip` | prefill +15 % (1k) / +11 % (4.8k), decode median equal, but decode after a 30k prompt -6 % (reproducible) | fails the 3 % rule; cause of the long-context decode drop not found yet, follow-up |
 
 Plan for the next session: [NEXT.md](NEXT.md).
 
