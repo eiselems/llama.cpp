@@ -3281,7 +3281,9 @@ bool llama_context::expert_prefetch_init(ggml_backend_t backend) {
     for (const auto & layer : model.layers) {
         for (const ggml_tensor * t : { layer.ffn_gate_up_exps, layer.ffn_gate_exps, layer.ffn_up_exps, layer.ffn_down_exps }) {
             if (t != nullptr && t->buffer != nullptr && ggml_backend_buffer_is_host(t->buffer)) {
-                size[expert_prefetch_slot_of(t)] = std::max(size[expert_prefetch_slot_of(t)], ggml_nbytes(t));
+                // the device buffer may pad quantized tensors, size the slots for what the device allocates
+                const size_t sz = ggml_backend_buft_get_alloc_size(ggml_backend_get_default_buffer_type(backend), t);
+                size[expert_prefetch_slot_of(t)] = std::max(size[expert_prefetch_slot_of(t)], sz);
             }
         }
     }
@@ -3330,7 +3332,7 @@ ggml_tensor * llama_context::expert_prefetch_view(int si, const ggml_tensor * li
             return v;
         }
     }
-    if (ggml_nbytes(like) > s.size || s.views.size() >= 16) {
+    if (ggml_backend_buft_get_alloc_size(ggml_backend_buffer_get_type(prefetch.buf), like) > s.size || s.views.size() >= 16) {
         return nullptr;
     }
     ggml_tensor * v = ggml_new_tensor(prefetch.ctx, like->type, GGML_MAX_DIMS, like->ne);
