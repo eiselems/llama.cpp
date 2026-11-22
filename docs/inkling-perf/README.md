@@ -16,7 +16,7 @@ Common flags: `--fit off -ngl all -cmoe -b 2048 --moe-cache-cpu-share 0.7 -fa on
 
 | preset | env + extra flags | -ub | cache MiB (light / heavy desktop) | prefill 1k / 4.8k | decode @1k / @4.8k | VRAM peak (light) |
 |---|---|---:|---|---:|---:|---:|
-| **balanced, prefetch skip** (S14, bench.py) | ,  | 1024 | 3200 / ~2700 | **858 / 912** (bench.py) | 35.9 (bench.py median) | 7424 |
+| **balanced, prefetch skip** (S14, bench.py) | `LLAMA_EXPERT_PREFETCH=1 LLAMA_EXPERT_PREFETCH_SKIP=1`, `-ctk q4_0 -ctv q4_0` | 1024 | 3200 / ~2700 | **858 / 912** (bench.py) | 35.9 (bench.py median) | 7424 |
 | **decode first, background fill** (S13, bench.py 2026-11-22) | `LLAMA_EXPERT_PREFETCH=3 LLAMA_MOE_CACHE_ASYNC_FILL=1`, `-ctk q4_0 -ctv q4_0` | 1024 | 3650 / ~3150 | 689 / 734 (bench.py) | **37.8** (bench.py median) | 7526 |
 | **decode first** (S10) | `LLAMA_EXPERT_PREFETCH=3`, `-ctk q4_0 -ctv q4_0` | 1024 | 3650 / ~3150 | 638 / 724 | **35.2 / 33.0** | 7604 |
 | **balanced** (S11) | `LLAMA_EXPERT_PREFETCH=1`, `-ctk q4_0 -ctv q4_0` | 1024 | 3200 / ~2700 | 682 / 802 | 33.4 / 31.6 | 7502 |
@@ -81,7 +81,6 @@ Balanced preset at `-ub 1280` (cache 3400): out of memory during the speed runs 
 Hill-climb log with every experiment (2026-11-22 from 11:15, bench.py harness): [PLAN.md](PLAN.md).
 
 Theoretical ceilings (measured hardware, model bytes/FLOPs): [THEORY.md](THEORY.md).| E1: large batches skip reading the router ids back before the expert upload (`LLAMA_EXPERT_COPY_NOSYNC=1`), S12, branch `inkling-try-copy-nosync` | prefill 4.7k 952.8 vs controls 954.4 / 953.0 | neutral: with prefetch the expert weights never take this path |
-| E2: prefetch skips experts already in the MoE cache (`LLAMA_EXPERT_PREFETCH_SKIP=1`), S11, branch `inkling-try-prefetch-skip` | prefill +15 % (1k) / +11 % (4.8k), decode median equal, but decode after a 30k prompt -6 % (reproducible) | fails the 3 % rule; cause of the long-context decode drop not found yet, follow-up |
 | E3: CPU-expert lookup on the CPU so the CPU part overlaps the cached experts (`LLAMA_MOE_CACHE_CPU_IDS_ON_CPU=1`), S10, branch `inkling-try-cpu-ids` | decode 36.4 vs controls 37.1 / 36.7 | neutral; the expert uploads, not the CPU part, are on the critical path |
 | E3b: E3 plus CPU share 0.85 / 0.95 | decode 37.2 / 36.6 vs 36.8 / 37.1 | neutral |
 
