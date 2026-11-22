@@ -21,3 +21,4 @@
 | S15 | max prefill + prefetch skip (S15 = S12 + E2) | `c6c810f7d` | 7301 | 850 | 1003 | 33.2 | 25 |
 | S16 | max decode: S13 at -ub 512, cache 3950 (prefill halves) | `1f01e1aaa` | 7660 | 367 | 379 | 38.4 | 31 |
 | E7 | + MMA attention bias (S17 = S15 + E7) | `a39686409` | 7301 | 845 | 996 | 33.6 | 26.3 |
+| E8 | + bias index from positions (S18 = S17 + E8) | `58797ab4f` | 7022 | 861 | 1057 | 33.4 | 24.9 |
