@@ -3,7 +3,7 @@
 #   serve.sh start PRESET [extra llama-server args...]   detached, PID in $RUN/server.pid, log in $RUN/server-PRESET.log
 #   serve.sh stop                                         stop by PID: SIGTERM, wait up to 30 s, then SIGKILL
 # Env: BIN (llama-server), MODEL, PORT (8089), RUN (state dir), CTX (32768).
-# Presets (docs/inkling-perf/README.md): S10 decode first, S11 balanced, S12 max prefill. Model card sampling is
+# Presets (docs/inkling-perf/README.md): S10 decode first, S11 balanced, S12 max prefill, S13 = S10 + background fill. Model card sampling is
 # set per request by bench.py (temperature 1.0, top-p 1.0, top-k 0, min-p 0).
 set -u
 here=$(cd "$(dirname "$0")/../.." && pwd)
@@ -36,6 +36,7 @@ start)
         S10) env=(LLAMA_EXPERT_PREFETCH=3); flags=(-ub 1024 --moe-cache-mib 3650) ;;
         S11) env=(LLAMA_EXPERT_PREFETCH=1); flags=(-ub 1024 --moe-cache-mib 3200) ;;
         S12) env=(LLAMA_EXPERT_PREFETCH=1); flags=(-ub 2048 --moe-cache-mib 2650) ;;
+        S13) env=(LLAMA_EXPERT_PREFETCH=3 LLAMA_MOE_CACHE_ASYNC_FILL=1); flags=(-ub 1024 --moe-cache-mib 3650) ;;  # S10 + E4
         *)   echo "unknown preset $preset" >&2; exit 1 ;;
     esac
     # extra args after the preset override the preset (llama.cpp: the last flag wins); EXTRA_ENV adds env vars

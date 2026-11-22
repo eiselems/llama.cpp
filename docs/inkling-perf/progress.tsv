@@ -15,3 +15,4 @@ S12	6b6115871	max prefill + q4_0 KV, ub 2048, cache 2650	7382	676.2	932	32	27.5	
 B10	bench.py	bench.py baseline S10 (median of 6, 3 runs)	7526	688	735	36.9	27.4	S10 via scripts/inkling/serve.sh
 B11	bench.py	bench.py baseline S11	7424	745	820	35.3	26.9	S11 via scripts/inkling/serve.sh
 B12	bench.py	bench.py baseline S12	7301	737	950	33.1	27.4	S12 via scripts/inkling/serve.sh
+E4	d0c94745	+ background cache fill (S13 = S10 + E4)	7526	689	734	37.8	29	LLAMA_EXPERT_PREFETCH=3 LLAMA_MOE_CACHE_ASYNC_FILL=1, S10 flags

@@ -16,3 +16,4 @@
 | B10 | bench.py baseline S10 (median of 6, 3 runs) | `bench.py` | 7526 | 688 | 735 | 36.9 | 27.4 |
 | B11 | bench.py baseline S11 | `bench.py` | 7424 | 745 | 820 | 35.3 | 26.9 |
 | B12 | bench.py baseline S12 | `bench.py` | 7301 | 737 | 950 | 33.1 | 27.4 |
+| E4 | + background cache fill (S13 = S10 + E4) | `d0c94745` | 7526 | 689 | 734 | 37.8 | 29 |
