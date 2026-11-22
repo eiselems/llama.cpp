@@ -1,78 +1,95 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 690" width="960" height="690" role="img" aria-label="Inkling-2-Mini prefill and decode speed per optimization step">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 676" width="960" height="676" role="img" aria-label="Inkling-2-Mini prefill and decode speed per optimization step">
 <style>
-:root { --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#8a8984; --grid:#e6e5e0; --s1:#2a78d6; --s2:#eb6834; }
-@media (prefers-color-scheme: dark) { :root { --surface:#1a1a19; --ink:#f0efec; --ink2:#c3c2b7; --muted:#8f8e88; --grid:#33332f; --s1:#3987e5; --s2:#d95926; } }
-text { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fill: var(--ink2); font-size: 12px; }
-.title { fill: var(--ink); font-size: 15px; font-weight: 600; }
-.ptitle { fill: var(--ink); font-size: 13px; font-weight: 600; }
-.tick { fill: var(--muted); font-size: 11px; }
-.grid { stroke: var(--grid); stroke-width: 1; }
-.base { stroke: var(--muted); stroke-width: 1; }
-.l1 { stroke: var(--s1); fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.l2 { stroke: var(--s2); fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; stroke-dasharray: 6 4; }
-.m1 { fill: var(--s1); stroke: var(--surface); stroke-width: 2; }
-.m2 { fill: var(--s2); stroke: var(--surface); stroke-width: 2; }
-.val { fill: var(--ink); font-size: 11px; font-weight: 600; }
+.bg { fill: #fcfcfb; }
+text { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #52514e; font-size: 12px; }
+.title { fill: #0b0b0b; font-size: 15px; font-weight: 600; }
+.ptitle { fill: #0b0b0b; font-size: 13px; font-weight: 600; }
+.tick { fill: #8a8984; font-size: 11px; }
+.grid { stroke: #e6e5e0; stroke-width: 1; }
+.base { stroke: #8a8984; stroke-width: 1; }
+.l1 { stroke: #2a78d6; fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.l2 { stroke: #eb6834; fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; stroke-dasharray: 6 4; }
+.m1 { fill: #2a78d6; stroke: #fcfcfb; stroke-width: 2; }
+.m2 { fill: #eb6834; stroke: #fcfcfb; stroke-width: 2; }
+.val { fill: #0b0b0b; font-size: 11px; font-weight: 600; }
+@media (prefers-color-scheme: dark) {
+  .bg { fill: #1a1a19; }
+  text { fill: #c3c2b7; }
+  .title, .ptitle, .val { fill: #f0efec; }
+  .tick { fill: #8f8e88; }
+  .grid { stroke: #33332f; }
+  .base { stroke: #8f8e88; }
+  .l1 { stroke: #3987e5; } .l2 { stroke: #d95926; }
+  .m1 { fill: #3987e5; stroke: #1a1a19; } .m2 { fill: #d95926; stroke: #1a1a19; }
+}
 </style>
-<rect width="960" height="690" fill="var(--surface)"/>
+<rect class="bg" width="960" height="676"/>
 <text class="title" x="64" y="26">Inkling-2-Mini on RTX 3070 8 GB - llama.cpp fork, per optimization step</text>
 <text x="64" y="44">tokens/s, higher is better. UD-Q4_K_M, 32k ctx, q8_0 KV, experts in RAM. Hover a point for the exact value.</text>
-<text class="ptitle" x="64" y="76">Prefill (prompt processing)</text>
-<line class="base" x1="64" x2="810" y1="316.0" y2="316.0"/>
-<text class="tick" x="56" y="320.0" text-anchor="end">0</text>
-<line class="grid" x1="64" x2="810" y1="258.5" y2="258.5"/>
-<text class="tick" x="56" y="262.5" text-anchor="end">250</text>
-<line class="grid" x1="64" x2="810" y1="201.0" y2="201.0"/>
-<text class="tick" x="56" y="205.0" text-anchor="end">500</text>
-<line class="grid" x1="64" x2="810" y1="143.5" y2="143.5"/>
-<text class="tick" x="56" y="147.5" text-anchor="end">750</text>
-<line class="grid" x1="64" x2="810" y1="86.0" y2="86.0"/>
-<text class="tick" x="56" y="90.0" text-anchor="end">1000</text>
-<polyline class="l1" points="157.2,302.8 343.8,299.7 530.2,299.0 716.8,216.1"/>
-<circle class="m1" cx="157.2" cy="302.8" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): 1k prompt 57.6 t/s, VRAM 6307 MiB</title></circle>
-<circle class="m1" cx="343.8" cy="299.7" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): 1k prompt 70.7 t/s, VRAM 6596 MiB</title></circle>
-<circle class="m1" cx="530.2" cy="299.0" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): 1k prompt 74.1 t/s, VRAM 6420 MiB</title></circle>
-<circle class="m1" cx="716.8" cy="216.1" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): 1k prompt 434.4 t/s, VRAM 7441 MiB</title></circle>
-<text class="val" x="726.8" y="213.1">1k prompt 434.4</text>
-<polyline class="l2" points="157.2,303.0 343.8,298.3 530.2,297.3 716.8,200.7"/>
-<circle class="m2" cx="157.2" cy="303.0" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): 4.8k prompt 56.4 t/s, VRAM 6307 MiB</title></circle>
-<circle class="m2" cx="343.8" cy="298.3" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): 4.8k prompt 77.1 t/s, VRAM 6596 MiB</title></circle>
-<circle class="m2" cx="530.2" cy="297.3" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): 4.8k prompt 81.5 t/s, VRAM 6420 MiB</title></circle>
-<circle class="m2" cx="716.8" cy="200.7" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): 4.8k prompt 501.3 t/s, VRAM 7441 MiB</title></circle>
-<text class="val" x="726.8" y="205.7">4.8k prompt 501.3</text>
-<text class="tick" x="810" y="76" text-anchor="end">1k prompt: 57.6 -> 434.4 (7.5x)</text>
-<text class="ptitle" x="64" y="360">Decode (token generation, 128 tokens)</text>
-<line class="base" x1="64" x2="810" y1="600.0" y2="600.0"/>
-<text class="tick" x="56" y="604.0" text-anchor="end">0</text>
-<line class="grid" x1="64" x2="810" y1="542.5" y2="542.5"/>
-<text class="tick" x="56" y="546.5" text-anchor="end">25</text>
-<line class="grid" x1="64" x2="810" y1="485.0" y2="485.0"/>
-<text class="tick" x="56" y="489.0" text-anchor="end">50</text>
-<line class="grid" x1="64" x2="810" y1="427.5" y2="427.5"/>
-<text class="tick" x="56" y="431.5" text-anchor="end">75</text>
-<line class="grid" x1="64" x2="810" y1="370.0" y2="370.0"/>
-<text class="tick" x="56" y="374.0" text-anchor="end">100</text>
-<polyline class="l1" points="157.2,558.6 343.8,543.2 530.2,537.0 716.8,530.8"/>
-<circle class="m1" cx="157.2" cy="558.6" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): after 1k 18 t/s, VRAM 6307 MiB</title></circle>
-<circle class="m1" cx="343.8" cy="543.2" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): after 1k 24.7 t/s, VRAM 6596 MiB</title></circle>
-<circle class="m1" cx="530.2" cy="537.0" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): after 1k 27.4 t/s, VRAM 6420 MiB</title></circle>
-<circle class="m1" cx="716.8" cy="530.8" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): after 1k 30.1 t/s, VRAM 7441 MiB</title></circle>
-<text class="val" x="726.8" y="527.8">after 1k 30.1</text>
-<polyline class="l2" points="157.2,560.2 343.8,544.1 530.2,537.7 716.8,533.5"/>
-<circle class="m2" cx="157.2" cy="560.2" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): after 4.8k 17.3 t/s, VRAM 6307 MiB</title></circle>
-<circle class="m2" cx="343.8" cy="544.1" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): after 4.8k 24.3 t/s, VRAM 6596 MiB</title></circle>
-<circle class="m2" cx="530.2" cy="537.7" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): after 4.8k 27.1 t/s, VRAM 6420 MiB</title></circle>
-<circle class="m2" cx="716.8" cy="533.5" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): after 4.8k 28.9 t/s, VRAM 7441 MiB</title></circle>
-<text class="val" x="726.8" y="538.5">after 4.8k 28.9</text>
-<text class="tick" x="810" y="360" text-anchor="end">after 1k: 18 -> 30.1 (1.7x)</text>
-<text class="tick" transform="translate(157.2,614) rotate(-35)" text-anchor="end">S0 upstream master (no-op-offload, ub32, cache 2800)</text>
-<text class="tick" transform="translate(343.8,614) rotate(-35)" text-anchor="end">S1 + MoE cache dedup (adishik 65dd939f)</text>
-<text class="tick" transform="translate(530.2,614) rotate(-35)" text-anchor="end">S2 + fused glue ops + FA bias (#32740), same flags</text>
-<text class="tick" transform="translate(716.8,614) rotate(-35)" text-anchor="end">S3 op-offload on (views fix), ub512, cache 3400</text>
-<line class="l1" x1="828" x2="850" y1="102" y2="102"/>
-<circle class="m1" cx="839" cy="102" r="4"/>
-<text x="856" y="106" style="font-size:11px">1k prompt / after 1k</text>
-<line class="l2" x1="828" x2="850" y1="122" y2="122"/>
-<circle class="m2" cx="839" cy="122" r="4"/>
-<text x="856" y="126" style="font-size:11px">4.8k prompt / after 4.8k</text>
+<text class="ptitle" x="64" y="98">Prefill (prompt processing)</text>
+<line class="base" x1="64" x2="840" y1="328.0" y2="328.0"/>
+<text class="tick" x="56" y="332.0" text-anchor="end">0</text>
+<line class="grid" x1="64" x2="840" y1="273.0" y2="273.0"/>
+<text class="tick" x="56" y="277.0" text-anchor="end">250</text>
+<line class="grid" x1="64" x2="840" y1="218.0" y2="218.0"/>
+<text class="tick" x="56" y="222.0" text-anchor="end">500</text>
+<line class="grid" x1="64" x2="840" y1="163.0" y2="163.0"/>
+<text class="tick" x="56" y="167.0" text-anchor="end">750</text>
+<line class="grid" x1="64" x2="840" y1="108.0" y2="108.0"/>
+<text class="tick" x="56" y="112.0" text-anchor="end">1000</text>
+<polyline class="l1" points="161.0,315.3 355.0,312.4 549.0,311.7 743.0,232.4"/>
+<circle class="m1" cx="161.0" cy="315.3" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): 1k prompt 57.6 t/s, VRAM 6307 MiB</title></circle>
+<circle class="m1" cx="355.0" cy="312.4" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): 1k prompt 70.7 t/s, VRAM 6596 MiB</title></circle>
+<circle class="m1" cx="549.0" cy="311.7" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): 1k prompt 74.1 t/s, VRAM 6420 MiB</title></circle>
+<circle class="m1" cx="743.0" cy="232.4" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): 1k prompt 434.4 t/s, VRAM 7441 MiB</title></circle>
+<text class="val" x="753.0" y="246.4">434.4</text>
+<polyline class="l2" points="161.0,315.6 355.0,311.0 549.0,310.1 743.0,217.7"/>
+<circle class="m2" cx="161.0" cy="315.6" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): 4.8k prompt 56.4 t/s, VRAM 6307 MiB</title></circle>
+<circle class="m2" cx="355.0" cy="311.0" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): 4.8k prompt 77.1 t/s, VRAM 6596 MiB</title></circle>
+<circle class="m2" cx="549.0" cy="310.1" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): 4.8k prompt 81.5 t/s, VRAM 6420 MiB</title></circle>
+<circle class="m2" cx="743.0" cy="217.7" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): 4.8k prompt 501.3 t/s, VRAM 7441 MiB</title></circle>
+<text class="val" x="753.0" y="211.7">501.3</text>
+<text class="tick" x="840" y="98" text-anchor="end">1k prompt: 57.6 -> 434.4 (7.5x)</text>
+<text class="ptitle" x="64" y="376">Decode (token generation, 128 tokens)</text>
+<line class="base" x1="64" x2="840" y1="606.0" y2="606.0"/>
+<text class="tick" x="56" y="610.0" text-anchor="end">0</text>
+<line class="grid" x1="64" x2="840" y1="551.0" y2="551.0"/>
+<text class="tick" x="56" y="555.0" text-anchor="end">12.5</text>
+<line class="grid" x1="64" x2="840" y1="496.0" y2="496.0"/>
+<text class="tick" x="56" y="500.0" text-anchor="end">25</text>
+<line class="grid" x1="64" x2="840" y1="441.0" y2="441.0"/>
+<text class="tick" x="56" y="445.0" text-anchor="end">37.5</text>
+<line class="grid" x1="64" x2="840" y1="386.0" y2="386.0"/>
+<text class="tick" x="56" y="390.0" text-anchor="end">50</text>
+<polyline class="l1" points="161.0,526.8 355.0,497.3 549.0,485.4 743.0,473.6"/>
+<circle class="m1" cx="161.0" cy="526.8" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): after 1k 18 t/s, VRAM 6307 MiB</title></circle>
+<circle class="m1" cx="355.0" cy="497.3" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): after 1k 24.7 t/s, VRAM 6596 MiB</title></circle>
+<circle class="m1" cx="549.0" cy="485.4" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): after 1k 27.4 t/s, VRAM 6420 MiB</title></circle>
+<circle class="m1" cx="743.0" cy="473.6" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): after 1k 30.1 t/s, VRAM 7441 MiB</title></circle>
+<text class="val" x="753.0" y="467.6">30.1</text>
+<polyline class="l2" points="161.0,529.9 355.0,499.1 549.0,486.8 743.0,478.8"/>
+<circle class="m2" cx="161.0" cy="529.9" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): after 4.8k 17.3 t/s, VRAM 6307 MiB</title></circle>
+<circle class="m2" cx="355.0" cy="499.1" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): after 4.8k 24.3 t/s, VRAM 6596 MiB</title></circle>
+<circle class="m2" cx="549.0" cy="486.8" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): after 4.8k 27.1 t/s, VRAM 6420 MiB</title></circle>
+<circle class="m2" cx="743.0" cy="478.8" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): after 4.8k 28.9 t/s, VRAM 7441 MiB</title></circle>
+<text class="val" x="753.0" y="492.8">28.9</text>
+<text class="tick" x="840" y="376" text-anchor="end">after 1k: 18 -> 30.1 (1.7x)</text>
+<text class="ptitle" x="161.0" y="622" text-anchor="middle" style="font-size:12px">S0</text>
+<text class="tick" x="161.0" y="636" text-anchor="middle">upstream master (no-op-offload,</text>
+<text class="tick" x="161.0" y="649" text-anchor="middle">ub32, cache 2800)</text>
+<text class="ptitle" x="355.0" y="622" text-anchor="middle" style="font-size:12px">S1</text>
+<text class="tick" x="355.0" y="636" text-anchor="middle">+ MoE cache dedup (adishik</text>
+<text class="tick" x="355.0" y="649" text-anchor="middle">65dd939f)</text>
+<text class="ptitle" x="549.0" y="622" text-anchor="middle" style="font-size:12px">S2</text>
+<text class="tick" x="549.0" y="636" text-anchor="middle">+ fused glue ops + FA bias</text>
+<text class="tick" x="549.0" y="649" text-anchor="middle">(#32740), same flags</text>
+<text class="ptitle" x="743.0" y="622" text-anchor="middle" style="font-size:12px">S3</text>
+<text class="tick" x="743.0" y="636" text-anchor="middle">op-offload on (views fix),</text>
+<text class="tick" x="743.0" y="649" text-anchor="middle">ub512, cache 3400</text>
+<line class="l1" x1="64" x2="86" y1="64" y2="64"/>
+<circle class="m1" cx="75" cy="64" r="4"/>
+<text x="92" y="68">1k-token prompt</text>
+<line class="l2" x1="221" x2="243" y1="64" y2="64"/>
+<circle class="m2" cx="232" cy="64" r="4"/>
+<text x="249" y="68">4.8k-token prompt</text>
 </svg>

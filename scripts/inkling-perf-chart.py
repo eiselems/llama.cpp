@@ -11,34 +11,43 @@ rows = list(csv.DictReader(open(os.path.join(root, 'progress.tsv')), delimiter='
 if not rows:
     sys.exit('no rows')
 
-W, PAD_L, PAD_R = 960, 64, 150
-PANEL_H, GAP, TOP = 230, 54, 56
-X_LAB = 120                                   # room for the rotated step labels under the lower panel
-H = TOP + 2*PANEL_H + GAP + X_LAB
+W, PAD_L, PAD_R = 960, 64, 120
+PANEL_H, GAP, TOP = 220, 58, 78
+X_LAB = 70                                   # room for the rotated step labels under the lower panel
+H = TOP + 30 + 2*PANEL_H + GAP + X_LAB
 plot_w = W - PAD_L - PAD_R
 n = len(rows)
 xs = [PAD_L + (plot_w*(i + 0.5)/n) for i in range(n)]
 
 # palette: categorical slots 1-2, light + dark (validated: CVD dE >= 24 in both modes)
 CSS = """
-:root { --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#8a8984; --grid:#e6e5e0; --s1:#2a78d6; --s2:#eb6834; }
-@media (prefers-color-scheme: dark) { :root { --surface:#1a1a19; --ink:#f0efec; --ink2:#c3c2b7; --muted:#8f8e88; --grid:#33332f; --s1:#3987e5; --s2:#d95926; } }
-text { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fill: var(--ink2); font-size: 12px; }
-.title { fill: var(--ink); font-size: 15px; font-weight: 600; }
-.ptitle { fill: var(--ink); font-size: 13px; font-weight: 600; }
-.tick { fill: var(--muted); font-size: 11px; }
-.grid { stroke: var(--grid); stroke-width: 1; }
-.base { stroke: var(--muted); stroke-width: 1; }
-.l1 { stroke: var(--s1); fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.l2 { stroke: var(--s2); fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; stroke-dasharray: 6 4; }
-.m1 { fill: var(--s1); stroke: var(--surface); stroke-width: 2; }
-.m2 { fill: var(--s2); stroke: var(--surface); stroke-width: 2; }
-.val { fill: var(--ink); font-size: 11px; font-weight: 600; }
+.bg { fill: #fcfcfb; }
+text { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #52514e; font-size: 12px; }
+.title { fill: #0b0b0b; font-size: 15px; font-weight: 600; }
+.ptitle { fill: #0b0b0b; font-size: 13px; font-weight: 600; }
+.tick { fill: #8a8984; font-size: 11px; }
+.grid { stroke: #e6e5e0; stroke-width: 1; }
+.base { stroke: #8a8984; stroke-width: 1; }
+.l1 { stroke: #2a78d6; fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.l2 { stroke: #eb6834; fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; stroke-dasharray: 6 4; }
+.m1 { fill: #2a78d6; stroke: #fcfcfb; stroke-width: 2; }
+.m2 { fill: #eb6834; stroke: #fcfcfb; stroke-width: 2; }
+.val { fill: #0b0b0b; font-size: 11px; font-weight: 600; }
+@media (prefers-color-scheme: dark) {
+  .bg { fill: #1a1a19; }
+  text { fill: #c3c2b7; }
+  .title, .ptitle, .val { fill: #f0efec; }
+  .tick { fill: #8f8e88; }
+  .grid { stroke: #33332f; }
+  .base { stroke: #8f8e88; }
+  .l1 { stroke: #3987e5; } .l2 { stroke: #d95926; }
+  .m1 { fill: #3987e5; stroke: #1a1a19; } .m2 { fill: #d95926; stroke: #1a1a19; }
+}
 """
 
 def nice_max(v):
-    for step in (1, 2, 2.5, 5):
-        for mag in (1, 10, 100, 1000, 10000):
+    for mag in (1, 10, 100, 1000, 10000):
+        for step in (1, 2, 2.5, 5):
             m = step*mag
             if m >= v*1.08:
                 return m
@@ -52,7 +61,7 @@ def f(v):
 
 out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" '
        f'aria-label="Inkling-2-Mini prefill and decode speed per optimization step">',
-       f'<style>{CSS}</style>', f'<rect width="{W}" height="{H}" fill="var(--surface)"/>',
+       f'<style>{CSS}</style>', f'<rect class="bg" width="{W}" height="{H}"/>',
        f'<text class="title" x="{PAD_L}" y="26">Inkling-2-Mini on RTX 3070 8 GB - llama.cpp fork, per optimization step</text>',
        f'<text x="{PAD_L}" y="44">tokens/s, higher is better. UD-Q4_K_M, 32k ctx, q8_0 KV, experts in RAM. Hover a point for the exact value.</text>']
 
@@ -79,8 +88,9 @@ def panel(y0, title, keys, names, unit_note):
         # direct label at the last point: the series name and its current value
         last = max(i for i, r in enumerate(rows) if f(r[k]) is not None)
         lv = f(rows[last][k])
-        dy = -9 if si == 1 else 15
-        out.append(f'<text class="val" x="{xs[last] + 10:.1f}" y="{y(lv) + dy/3:.1f}">{name} {lv:g}</text>')
+        other = [f(rows[last][k2]) for k2 in keys if k2 != k and f(rows[last][k2]) is not None]
+        above = not other or lv >= other[0]
+        out.append(f'<text class="val" x="{xs[last] + 10:.1f}" y="{y(lv) + (-6 if above else 14):.1f}">{lv:g}</text>')
     # first-to-last gain for series 1
     first = next(f(r[keys[0]]) for r in rows if f(r[keys[0]]) is not None)
     lastv = [f(r[keys[0]]) for r in rows if f(r[keys[0]]) is not None][-1]
@@ -92,18 +102,23 @@ y_tg = y_pp + PANEL_H + GAP
 panel(y_tg, 'Decode (token generation, 128 tokens)', ['tg1k', 'tg5k'], ['after 1k', 'after 4.8k'], '')
 
 # step labels under the lower panel, rotated
+import textwrap
+col_w = plot_w/n
+chars = max(10, int(col_w/6.2))
 for i, r in enumerate(rows):
-    lab = html.escape(f"{r['step']} {r['change']}")
-    yb = y_tg + PANEL_H + 14
-    out.append(f'<text class="tick" transform="translate({xs[i]:.1f},{yb}) rotate(-35)" text-anchor="end">{lab}</text>')
+    yb = y_tg + PANEL_H + 16
+    out.append(f'<text class="ptitle" x="{xs[i]:.1f}" y="{yb}" text-anchor="middle" style="font-size:12px">{html.escape(r["step"])}</text>')
+    for j, line in enumerate(textwrap.wrap(r['change'], chars)[:3]):
+        out.append(f'<text class="tick" x="{xs[i]:.1f}" y="{yb + 14 + 13*j}" text-anchor="middle">{html.escape(line)}</text>')
 
 # legend (always present for 2 series): line style + marker, so identity is not color alone
-lx, ly = PAD_L + plot_w + 18, TOP + 46
-for si, (name, dash) in enumerate((('1k prompt / after 1k', ''), ('4.8k prompt / after 4.8k', '6 4')), start=1):
-    yy = ly + (si - 1)*20
-    out.append(f'<line class="l{si}" x1="{lx}" x2="{lx + 22}" y1="{yy}" y2="{yy}"/>')
-    out.append(f'<circle class="m{si}" cx="{lx + 11}" cy="{yy}" r="4"/>')
-    out.append(f'<text x="{lx + 28}" y="{yy + 4}" style="font-size:11px">{name}</text>')
+lx, ly = PAD_L, 64
+for name in ('1k-token prompt', '4.8k-token prompt'):
+    si = 1 if name.startswith('1k') else 2
+    out.append(f'<line class="l{si}" x1="{lx}" x2="{lx + 22}" y1="{ly}" y2="{ly}"/>')
+    out.append(f'<circle class="m{si}" cx="{lx + 11}" cy="{ly}" r="4"/>')
+    out.append(f'<text x="{lx + 28}" y="{ly + 4}">{name}</text>')
+    lx += 28 + 7*len(name) + 24
 out.append('</svg>')
 open(os.path.join(root, 'progress.svg'), 'w').write('\n'.join(out) + '\n')
 
