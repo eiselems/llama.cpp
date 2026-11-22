@@ -19,7 +19,7 @@ OUT=${OUT:-$HOME/eval-runs-20261122-inkling/bench}
 mkdir -p "$OUT"
 log="$OUT/$label.log"
 args=("$@")
-[ ${#args[@]} -eq 0 ] && args=(--fit off -ngl all -cmoe -b 2048 -ub 512 --moe-cache-mib 3400)
+[ ${#args[@]} -eq 0 ] && args=(--fit off -ngl all -cmoe -b 2048 -ub 1024 --moe-cache-mib 3400 --moe-cache-cpu-share 0.7)
 
 "$BIN" -m "$MODEL" -c 32768 -np 1 --load-mode none --jinja -t 6 -fa on -ctk q8_0 -ctv q8_0 \
     --host 127.0.0.1 --port "$PORT" "${args[@]}" > "$log" 2>&1 &
