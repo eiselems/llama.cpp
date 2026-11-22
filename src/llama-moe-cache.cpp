@@ -813,6 +813,17 @@ struct llama_moe_cache::impl {
         return it != bindings.end() ? it->second.cached : nullptr;
     }
 
+    bool has_expert(const ggml_tensor * w, int64_t e) const {
+        const auto it = bindings.find(w);
+        if (it == bindings.end()) {
+            return false;
+        }
+        const binding & b = it->second;
+        const group & g = groups[layers[b.il].ig];
+        const int32_t * slots = g.lru.slot_map[b.il];
+        return slots != nullptr && slots[e] < g.n_slots;
+    }
+
     int64_t copy_experts(ggml_backend_t backend, const ggml_tensor * w, ggml_tensor * dst, int64_t e, int64_t last) {
         const auto it = bindings.find(w);
         if (it == bindings.end()) {
@@ -1052,6 +1063,10 @@ ggml_tensor * llama_moe_cache::build_experts(const llm_graph_context & g, const 
 
 bool llama_moe_cache::copy(ggml_backend_t backend, const ggml_tensor * src, ggml_tensor * dst, ggml_cgraph * graph) {
     return pimpl->copy(backend, src, dst, graph);
+}
+
+bool llama_moe_cache::has_expert(const ggml_tensor * w, int64_t e) const {
+    return pimpl->has_expert(w, e);
 }
 
 int64_t llama_moe_cache::copy_experts(ggml_backend_t backend, const ggml_tensor * w, ggml_tensor * dst, int64_t e, int64_t last) {
