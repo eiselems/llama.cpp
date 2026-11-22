@@ -68,7 +68,7 @@ Balanced preset at `-ub 1280` (cache 3400): out of memory during the speed runs 
 | what | result | why |
 |---|---|---|
 | PR #32752 (mask in chunks) | not applied | superseded by #32740 (bias inside flash attention) |
-| PR #32076 (MoE cache without syncs) | crashes with dedup (illegal memory access); without dedup 19.7 vs 20.0 t/s | no gain on Linux CUDA, conflicts with dedup; local branch `inkling-perf-32076-wip` |
+| PR #32076 (MoE cache without syncs) | rebased on 8ed3c071 (2026-11-22 08:52): no crash any more, output correct, but S10 settings give 628.9 / 718.3 prefill and 32.1 / 29.0 decode vs 637.5 / 723.9 and 35.2 / 33.0 without it (dedup off: 30.1) | slower on Linux CUDA; local branch `inkling-nosync-try` |
 | -ub 4096 | 522 / 730 t/s prefill, 26.4 t/s decode at cache 1600; cache 2000 OOM | compute buffer too big for 8 GB |
 | DSpark speculative decoding (PR #32218 + #32773), draft n 3 / 2, cache 2400 | 23.5 / 31.3 t/s decode vs 34.1 without; acceptance 44-55 % at T=1 | the draft needs ~0.5 GiB VRAM (smaller MoE cache), and 3-4 token verification batches select more experts (more misses); local branch `inkling-dspark-try` |
 
@@ -82,5 +82,5 @@ Plan for the next session: [NEXT.md](NEXT.md).
 On the S10 preset, CPU share 0.6 / 0.7 / 0.8 and cache 3650 / 3900 all land at 34.3-35.2 t/s (noise).
 Cache stats during decode (`-lv 4`): hit rate 83 %; of the misses ~2/3 run on the CPU, ~1/3 are uploaded
 (~21 experts per token). Each of the 48 layer applications also syncs once to read the router ids, which leaves the
-GPU idle while the host plans the cache. More decode needs that sync removed (PR #32076's idea, which crashes with
-dedup today), not more config.
+GPU idle while the host plans the cache. Removing that sync with PR #32076 (rebased, works now) made decode slower (32.1 vs 35.2), so the sync is not the
+main cost either; the remaining time is in the misses (CPU experts and uploads).
