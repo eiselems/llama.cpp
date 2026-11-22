@@ -230,3 +230,20 @@ invalid (oom-run1/). Rerun of v3/v4 with cache 2300: no OOM, VRAM peak 7,484 MiB
 In v1/v2 the 1,033 MiB prefetch staging allocation failed once at a long prompt (prefetch disabled, handled, speed only).
 IQ4_NL needs more VRAM than UD at long context (bigger experts: prefetch staging 1,033 vs ~790 MiB); for 64k
 sessions use about 400 MiB less cache than the 32k presets.
+
+### 128k context smoke test (20:45-21:00, IQ4_NL, ~/eval-runs-20261122-inkling/ctx128k/)
+
+At -c 131072 the full-attention KV cache is 1,152 MiB (32k: 288) and the -ub 2048 compute buffer 1,753 MiB.
+Smoke = 2 cold 4,076-token prompts + 128 tokens (card sampling), then a short prompt + 128 tokens; VRAM peak whole GPU.
+
+| variant | cache MiB | prefetch | prefill 4k (run 1 / 2) | decode at 4k ctx | decode short | VRAM peak |
+|---|---:|---|---:|---:|---:|---:|
+| S19 | 2000 | staging failed -> off | 891 / 880 | 28.3 / 28.9 | 32.6 | 7,252 |
+| A: S19 | 1500 | on | 973 / 1,097 | 26.8 / 27.3 | 31.0 | 7,786 (too high) |
+| A2: S19 | 1350 | on | 974 / 1,096 | 26.8 / 26.4 | 26.1 | 7,638 |
+| **B: S19, no prefetch** | **2400** | off | **900 / 893** | **29.1 / 29.8** | **34.5** | **7,656** |
+| C: S20 | 3100 | staging failed -> off | 574 / 574 | 31.2 / 31.9 | 36.7 | 7,804 (too high) |
+| C2: S20, no prefetch | 2950 | off | 565 / 581 | 31.1 / 31.5 | 34.5 | 7,658 |
+
+B is the best balance -> preset S21. Single smoke runs at temperature 1, not a validated A/B; a prompt that
+actually fills 128k has not been run yet.
