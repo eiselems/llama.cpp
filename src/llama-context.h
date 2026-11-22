@@ -437,11 +437,14 @@ private:
             ggml_backend_event_t released = nullptr;    // recorded on the compute stream after the slot was read
             bool has_released = false;
             std::vector<ggml_tensor *> views;           // slot tensors by type and shape
+            std::vector<char> have;                     // skip mode: experts of src that were uploaded into the slot
         };
 
         bool enabled = false;
         bool failed  = false;
         bool single  = false;  // LLAMA_EXPERT_PREFETCH=3: one staging slot for all expert tensors
+        bool skip    = false;  // LLAMA_EXPERT_PREFETCH_SKIP=1: do not upload experts that are in the MoE cache
+        ggml_context * ctx_run = nullptr; // views for the per-run copies of the skip mode
         ggml_backend_t compute = nullptr;
         ggml_backend_t copy    = nullptr;               // second backend instance on the same device: its own stream
         ggml_backend_buffer_t buf = nullptr;
@@ -449,7 +452,7 @@ private:
         slot slots[2];                                  // 0: gate/up/gate_up experts, 1: down experts
         std::vector<const ggml_tensor *> order;         // host expert tensors in the order of the previous graph
         std::vector<const ggml_tensor *> cur;           // ... of the current graph
-        size_t n_hit = 0, n_miss = 0;
+        size_t n_hit = 0, n_miss = 0, n_direct = 0;
 
         ~expert_prefetch_state();
     };
@@ -460,6 +463,7 @@ private:
     bool expert_prefetch_copy(ggml_backend_t backend, const ggml_tensor * src, ggml_tensor * dst, ggml_cgraph * graph);
     bool expert_prefetch_init(ggml_backend_t backend);
     ggml_tensor * expert_prefetch_view(int si, const ggml_tensor * like);
+    void expert_prefetch_serve_runs(ggml_backend_t backend, const ggml_tensor * src, ggml_tensor * dst, ggml_tensor * slot, const std::vector<char> & have);
 
     // graph reallocations during inference where the backend assignments did not change, split by whether the
     // graph size is the same as the previously scheduled one (unexpected) or different

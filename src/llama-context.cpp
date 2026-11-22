@@ -779,6 +779,9 @@ void llama_context::sched_new(const sched_params & params) {
     if (const char * v = getenv("LLAMA_EXPERT_PREFETCH"); v != nullptr && atoi(v) != 0 && params.op_offload) {
         prefetch.enabled = true;
         prefetch.single  = atoi(v) == 3; // 3: one slot shared by all expert tensors (less VRAM)
+        if (const char * k = getenv("LLAMA_EXPERT_PREFETCH_SKIP"); k != nullptr && atoi(k) != 0) {
+            prefetch.skip = true;
+        }
     }
 
     sched_params_cur = params;
@@ -3240,11 +3243,14 @@ llama_context::expert_prefetch_state::~expert_prefetch_state() {
     if (ctx) {
         ggml_free(ctx);
     }
+    if (ctx_run) {
+        ggml_free(ctx_run);
+    }
     if (copy) {
         ggml_backend_free(copy);
     }
     if (n_hit + n_miss > 0) {
-        LLAMA_LOG_INFO("expert prefetch: %zu tensors from staging, %zu uploaded directly\n", n_hit, n_miss);
+        LLAMA_LOG_INFO("expert prefetch: %zu tensors from staging, %zu uploaded directly, %zu experts re-uploaded (skip mode)\n", n_hit, n_miss, n_direct);
     }
 }
 
@@ -3336,6 +3342,44 @@ ggml_tensor * llama_context::expert_prefetch_view(int si, const ggml_tensor * li
     return v;
 }
 
+// skip mode: fill dst expert by expert from the MoE cache (device copy), the staging slot (device copy) or, if neither
+// holds the expert (the cache changed since the prefetch), from host memory
+void llama_context::expert_prefetch_serve_runs(ggml_backend_t backend, const ggml_tensor * src, ggml_tensor * dst, ggml_tensor * slot, const std::vector<char> & have) {
+    auto & p = prefetch;
+    if (p.ctx_run == nullptr) {
+        ggml_init_params ip = { /*.mem_size =*/ 4*ggml_tensor_overhead(), /*.mem_buffer =*/ nullptr, /*.no_alloc =*/ true };
+        p.ctx_run = ggml_init(ip);
+    }
+    const int64_t n_exp = src->ne[2];
+    const size_t  esz   = src->nb[2];
+    for (int64_t e = 0; e < n_exp; ) {
+        if (moe_cache) {
+            const int64_t n = moe_cache->copy_experts(backend, src, dst, e, n_exp - 1);
+            if (n > 0) {
+                e += n;
+                continue;
+            }
+        }
+        const char h = e < (int64_t) have.size() ? have[e] : 0;
+        int64_t n = 1;
+        while (e + n < n_exp && (e + n < (int64_t) have.size() ? have[e + n] : 0) == h && !(moe_cache && moe_cache->has_expert(src, e + n))) {
+            n++;
+        }
+        if (h) {
+            ggml_reset(p.ctx_run);
+            ggml_tensor * a = ggml_view_3d(p.ctx_run, slot, slot->ne[0], slot->ne[1], n, slot->nb[1], slot->nb[2], e*slot->nb[2]);
+            ggml_tensor * b = ggml_view_3d(p.ctx_run, dst,  dst->ne[0],  dst->ne[1],  n, dst->nb[1],  dst->nb[2],  e*dst->nb[2]);
+            ggml_backend_view_init(a);
+            ggml_backend_view_init(b);
+            ggml_backend_tensor_copy_async(backend, backend, a, b);
+        } else {
+            ggml_backend_tensor_set_async(backend, dst, (const uint8_t *) src->data + e*esz, e*esz, n*esz);
+            p.n_direct += n;
+        }
+        e += n;
+    }
+}
+
 bool llama_context::expert_prefetch_copy(ggml_backend_t backend, const ggml_tensor * src, ggml_tensor * dst, ggml_cgraph * graph) {
     auto & p = prefetch;
     const size_t pos = p.cur.size();
@@ -3368,7 +3412,11 @@ bool llama_context::expert_prefetch_copy(ggml_backend_t backend, const ggml_tens
         ggml_tensor * v = expert_prefetch_view(si, src);
         if (v != nullptr) {
             ggml_backend_event_wait(backend, s.uploaded);
-            ggml_backend_tensor_copy_async(backend, backend, v, dst);
+            if (!p.skip) {
+                ggml_backend_tensor_copy_async(backend, backend, v, dst);
+            } else {
+                expert_prefetch_serve_runs(backend, src, dst, v, s.have);
+            }
             ggml_backend_event_record(s.released, backend);
             s.has_released = true;
             served = true;
@@ -3397,7 +3445,27 @@ bool llama_context::expert_prefetch_copy(ggml_backend_t backend, const ggml_tens
             if (s.has_released) {
                 ggml_backend_event_wait(p.copy, s.released);
             }
-            ggml_backend_tensor_set_async(p.copy, v, next->data, 0, ggml_nbytes(next));
+            if (!p.skip || !moe_cache) {
+                ggml_backend_tensor_set_async(p.copy, v, next->data, 0, ggml_nbytes(next));
+                s.have.assign(next->ne[2], 1);
+            } else {
+                const int64_t n_exp = next->ne[2];
+                const size_t  esz   = next->nb[2];
+                s.have.assign(n_exp, 0);
+                for (int64_t e = 0; e < n_exp; ) {
+                    if (moe_cache->has_expert(next, e)) {
+                        e++;
+                        continue;
+                    }
+                    int64_t n = 1;
+                    while (e + n < n_exp && !moe_cache->has_expert(next, e + n)) {
+                        n++;
+                    }
+                    ggml_backend_tensor_set_async(p.copy, v, (const uint8_t *) next->data + e*esz, e*esz, n*esz);
+                    std::fill(s.have.begin() + e, s.have.begin() + e + n, 1);
+                    e += n;
+                }
+            }
             ggml_backend_event_record(s.uploaded, p.copy);
             s.src = next;
         }
