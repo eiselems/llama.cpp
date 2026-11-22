@@ -80,6 +80,8 @@ Hill-climb log with every experiment (2026-11-22 from 11:15, bench.py harness): 
 
 Theoretical ceilings (measured hardware, model bytes/FLOPs): [THEORY.md](THEORY.md).| E1: large batches skip reading the router ids back before the expert upload (`LLAMA_EXPERT_COPY_NOSYNC=1`), S12, branch `inkling-try-copy-nosync` | prefill 4.7k 952.8 vs controls 954.4 / 953.0 | neutral: with prefetch the expert weights never take this path |
 | E2: prefetch skips experts already in the MoE cache (`LLAMA_EXPERT_PREFETCH_SKIP=1`), S11, branch `inkling-try-prefetch-skip` | prefill +15 % (1k) / +11 % (4.8k), decode median equal, but decode after a 30k prompt -6 % (reproducible) | fails the 3 % rule; cause of the long-context decode drop not found yet, follow-up |
+| E3: CPU-expert lookup on the CPU so the CPU part overlaps the cached experts (`LLAMA_MOE_CACHE_CPU_IDS_ON_CPU=1`), S10, branch `inkling-try-cpu-ids` | decode 36.4 vs controls 37.1 / 36.7 | neutral; the expert uploads, not the CPU part, are on the critical path |
+| E3b: E3 plus CPU share 0.85 / 0.95 | decode 37.2 / 36.6 vs 36.8 / 37.1 | neutral |
 
 Plan for the next session: [NEXT.md](NEXT.md).
 
