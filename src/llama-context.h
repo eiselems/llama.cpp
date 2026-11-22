@@ -426,6 +426,40 @@ private:
 
     copy_experts_info copy_experts;
 
+    // opt-in (LLAMA_EXPERT_PREFETCH=1): with op offload, the next host expert tensor of the same kind is uploaded on a
+    // second stream into a staging slot while the current split computes; its split then copies it device to device
+    struct expert_prefetch_state {
+        struct slot {
+            size_t offset = 0;
+            size_t size   = 0;
+            const ggml_tensor * src = nullptr;          // host tensor uploaded (or being uploaded) into the slot
+            ggml_backend_event_t uploaded = nullptr;    // recorded on the copy stream after the upload
+            ggml_backend_event_t released = nullptr;    // recorded on the compute stream after the slot was read
+            bool has_released = false;
+            std::vector<ggml_tensor *> views;           // slot tensors by type and shape
+        };
+
+        bool enabled = false;
+        bool failed  = false;
+        ggml_backend_t compute = nullptr;
+        ggml_backend_t copy    = nullptr;               // second backend instance on the same device: its own stream
+        ggml_backend_buffer_t buf = nullptr;
+        ggml_context * ctx = nullptr;
+        slot slots[2];                                  // 0: gate/up/gate_up experts, 1: down experts
+        std::vector<const ggml_tensor *> order;         // host expert tensors in the order of the previous graph
+        std::vector<const ggml_tensor *> cur;           // ... of the current graph
+        size_t n_hit = 0, n_miss = 0;
+
+        ~expert_prefetch_state();
+    };
+
+    expert_prefetch_state prefetch;
+
+    // returns true if dst was filled from a prefetched slot
+    bool expert_prefetch_copy(ggml_backend_t backend, const ggml_tensor * src, ggml_tensor * dst, ggml_cgraph * graph);
+    bool expert_prefetch_init(ggml_backend_t backend);
+    ggml_tensor * expert_prefetch_view(int si, const ggml_tensor * like);
+
     // graph reallocations during inference where the backend assignments did not change, split by whether the
     // graph size is the same as the previously scheduled one (unexpected) or different
     int32_t n_reallocs_same = 0;
