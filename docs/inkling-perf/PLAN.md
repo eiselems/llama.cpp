@@ -146,3 +146,11 @@ Ranked next levers:
 | 14:50 | nsys CPU sampling of decode (S16) | OpenMP worker threads: ~62 % in `gomp_barrier_wait_end`, ~15 % in the NVFP4 kernel; main thread mostly waits in the CUDA driver. The CPU expert part costs ~4-5 ms/token in total; the GPU 16.5 ms | the bulk is GPU time, ~7 ms of it in ~3,000 small kernels |
 | 14:55-15:05 | OpenMP wait policy on S13: ctl / OMP_WAIT_POLICY=ACTIVE / GOMP_SPINCOUNT=INFINITE / ctl | c1 37.69 / 37.70 / 37.34 / 37.17 | **rejected**: neutral (the barrier time is idle waiting, not overhead) |
 | 15:15-15:40 | E6: indexed bias in the vec FA kernel for decode (`GGML_CUDA_FATTN_BIAS_VEC=1`), S13; ctl / vec / ctl / vec / ctl | c1 37.66 / 37.16 / 37.78 / 37.41 / 37.77; test-flash-attn-indexed-bias passes (max error 4.7e-09 vs 3.5e-05 for tile) | **rejected** (-1 %): nsys vec 0.78 ms/token vs tile 0.41 + dequantize 0.28 ms; with GQA 3 the vec kernel decodes the q4_0 K/V once per Q head. Branch `inkling-try-fattn-vec-bias` |
+| 15:45-16:00 | E7: indexed bias in the MMA FA kernel for prefill (`GGML_CUDA_FATTN_BIAS_MMA=1`), S15; ctl / mma / ctl / mma / ctl | prefill 29.7k 877 / **903** / 872 / **903** / 875 (+3.2 %); 958 tok 853 / 844 / 846 / 845 / 851, 4,724 tok 994 / 996 / 1,000 / 997 / 1,002 (neutral); c1 33.4 / 33.7 / 33.4 / 33.5 / 33.6; gate PASS, needles 3/3; test-flash-attn-indexed-bias passes with lower errors | **accepted** (small): merged a39686409, preset S17 = S15 + E7. nsys: attention 1.22 s on both kernels for a 4.8k prompt: the kernels are bound by gathering the per-element int32 bias indices (re-read by all 24 Q heads), not by the math |
+
+Updated lever list (16:05):
+1. Bias indices: derive the bin from the query/key positions in the kernel, or share the indices across the
+   heads of a block (GQA grouping), instead of an int32 per (query, key) read by every head. Attention is 31 % of
+   prefill at -ub 2048 and dominated by this; also helps the decode attention (E6 lost to it as well).
+2. Fewer small GPU kernels per decode token (~7 ms/token in ~3,000 kernels).
+3. Scheduler: copy the CPU split's inputs before the expert phase, then retry E5.

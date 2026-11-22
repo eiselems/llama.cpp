@@ -20,3 +20,4 @@
 | E2 | + prefetch skips cached experts (S14 = S11 + E2) | `1bf03dedd` | 7424 | 858 | 912 | 35.9 | 28.1 |
 | S15 | max prefill + prefetch skip (S15 = S12 + E2) | `c6c810f7d` | 7301 | 850 | 1003 | 33.2 | 25 |
 | S16 | max decode: S13 at -ub 512, cache 3950 (prefill halves) | `1f01e1aaa` | 7660 | 367 | 379 | 38.4 | 31 |
+| E7 | + MMA attention bias (S17 = S15 + E7) | `a39686409` | 7301 | 845 | 996 | 33.6 | 26.3 |
