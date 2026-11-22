@@ -210,3 +210,23 @@ S20 = S16 on IQ4_NL (+1 % decode, +33-51 % prefill). Not yet checked: answer qua
 
 Both accepted (+2 % / +1 % decode, nothing below 3 %; "decode after 29.7k" is a single bimodal sample, not used).
 S19 now uses 2900, S20 4150 (peak 7.49 GiB of 8 GiB: 0.51 GiB headroom).
+
+### Idea 8: quality of IQ4_NL (card sampling, thinking, 19:44-20:30)
+
+Same runner and launcher as the 10:02 UD-Q4_K_M run (~/startInkling2-perf.sh: balanced preset, 64k ctx, q4_0 KV,
+1 sample per task), only the model changed. Results in ~/eval-runs-20261122-inkling/iq4-eval/.
+
+| suite | UD-Q4_K_M (10:02) | IQ4_NL | IQ4_NL time |
+|---|---:|---:|---:|
+| v1 | 16/16 | **16/16** | 6 min |
+| v2 | 21/22 | **21/22** (same miss: the "Unknown" trap answer the checker rejects) | 12 min |
+| v3 | 10/10 | **10/10** | 7 min |
+| v4 JSON | 0/3 | 0/3 (native tool calls, as before) | <1 min |
+| v4 native | 3/3 | **3/3** | 5 min |
+
+Identical scores: IQ4_NL is accepted for quality as well. Run 1 with the launcher's cache 2700 ran out of VRAM at 64k
+context (late in v3, at the start of both v4 runs: cudaGraphInstantiate / cuMemCreate OOM); those results are
+invalid (oom-run1/). Rerun of v3/v4 with cache 2300: no OOM, VRAM peak 7,484 MiB of 8,192 (desktop included).
+In v1/v2 the 1,033 MiB prefetch staging allocation failed once at a long prompt (prefetch disabled, handled, speed only).
+IQ4_NL needs more VRAM than UD at long context (bigger experts: prefetch staging 1,033 vs ~790 MiB); for 64k
+sessions use about 400 MiB less cache than the 32k presets.
