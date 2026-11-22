@@ -11,8 +11,8 @@ checks are recorded. Full experiment log and status: [PLAN.md](PLAN.md); ceiling
 | goal | preset | prefill 958 / 4,724 tok | decode (median of 6) | VRAM peak | start |
 |---|---|---:|---:|---:|---|
 | **max prefill** | **S15** | 850 / **1,003** | 33.2 | 7.13 GiB | `scripts/inkling/serve.sh start S15` |
-| **max prefill, IQ4_NL (quality not yet evaluated)** | **S19** | 873 / **1,073** (29.7k: **1,054**) | 35.7 | 7.25 GiB | `scripts/inkling/serve.sh start S19` |
-| **max decode, IQ4_NL (quality not yet evaluated)** | **S20** | 491 / 571 (29.7k: 567) | **39.0** | 7.29 GiB | `scripts/inkling/serve.sh start S20` |
+| **max prefill, IQ4_NL (quality not yet evaluated)** | **S19** | 890 / **1,080** (29.7k: **1,055**) | 36.7 | 7.49 GiB | `scripts/inkling/serve.sh start S19` |
+| **max decode, IQ4_NL (quality not yet evaluated)** | **S20** | 503 / 578 (29.7k: 572) | **39.5** | 7.48 GiB | `scripts/inkling/serve.sh start S20` |
 | **max prefill (new best)** | **S18** | 861 / **1,057** (29.7k: **1,039**) | 33.4 | 6.85 GiB | `scripts/inkling/serve.sh start S18` |
 | **max prefill, long prompts** | **S17** | 845 / 996 (29.7k: **903**) | 33.6 | 7.13 GiB | `scripts/inkling/serve.sh start S17` |
 | **max decode** (prefill halves) | **S16** | 367 / 379 | **38.6** | 7.48 GiB | `scripts/inkling/serve.sh start S16` |

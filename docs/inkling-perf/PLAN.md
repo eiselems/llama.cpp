@@ -198,3 +198,15 @@ IQ4_NL has IQ4_NL experts (last 4 layers Q8_0) and is 1 GB bigger. Five-run A/B 
 Gates PASS, needles 3/3 on all runs. **Accepted for speed**: S19 = S18 on IQ4_NL (+6 % decode, +1.5 % prefill),
 S20 = S16 on IQ4_NL (+1 % decode, +33-51 % prefill). Not yet checked: answer quality of IQ4_NL on the card eval
 (the gate and the needles only test short answers and retrieval).
+
+### T10: bigger MoE cache on IQ4_NL (19:12-19:44), ctl / big / ctl / big / ctl, `--long 38000`
+
+| preset | cache | c1 decode | prefill 958 / 4,724 / 29.7k | VRAM peak |
+|---|---|---:|---:|---:|
+| S19 | 2650 (ctl 1-3) | 36.08 / 35.88 / 35.94 | 872-876 / 1,072-1,074 / 1,053 | 7.25 GiB |
+| S19 | **2900** (a, b) | **36.79 / 36.60** | **882 / 897**, 1,078 / 1,081, 1,055 | 7.49 GiB |
+| S20 | 3950 (ctl 1-3) | 39.11 / 39.05 / 38.89 | 494-498 / 573-579 / 565 | 7.29 GiB |
+| S20 | **4150** (a, b) | **39.72 / 39.28** | 504 / 502, 576 / 579, 573 / 571 | 7.48 GiB |
+
+Both accepted (+2 % / +1 % decode, nothing below 3 %; "decode after 29.7k" is a single bimodal sample, not used).
+S19 now uses 2900, S20 4150 (peak 7.49 GiB of 8 GiB: 0.51 GiB headroom).
