@@ -383,6 +383,7 @@ struct llama_moe_cache::impl {
         ggml_tensor * cpu_map  = nullptr;   // I32 [1, n_expert] in host memory, if cpu_share > 0
         std::vector<int32_t> cpu_experts;   // experts set in cpu_map
         uint32_t cpu_acc = 0;               // fraction of a miss carried over to the next plan, in 1/65536
+        bool later_pass = false;            // a later layer (a later pass of a looped layer) uses the same cache entries
         std::vector<ggml_tensor *> experts; // host expert tensors, in the order of the banks
     };
 
@@ -438,6 +439,7 @@ struct llama_moe_cache::impl {
     // 1 (default): shared entries, the host experts and the budget count each tensor once; 0: one entry per layer;
     // 2: shared entries, the host experts and the budget per layer as with 0 (the same slots as 0, to isolate the keying)
     int32_t dedup = 1;
+    bool loop_fill = false;
     std::vector<int32_t> key_layer_of; // [n_layer] layer whose cache entries layer il uses, -1 if not cached
 
     // LLAMA_MOE_CACHE_TRACE: the selected experts of each slot lookup, for a simulator of the cache
@@ -473,6 +475,12 @@ struct llama_moe_cache::impl {
 
         if (const char * v = getenv("LLAMA_MOE_CACHE_ASYNC_FILL"); v != nullptr && atoi(v) != 0) {
             async_fill = true;
+        }
+        // LLAMA_MOE_CACHE_LOOP_FILL=1 (with the background fill): in decode, a layer whose entries a later pass uses sends no
+        // miss to the CPU share; its misses take the background fill path instead (computed on the CPU for this token and
+        // uploaded on the side), so the later passes of the same token hit them
+        if (const char * v = getenv("LLAMA_MOE_CACHE_LOOP_FILL"); v != nullptr && atoi(v) != 0) {
+            loop_fill = true;
         }
         if (const char * v = getenv("LLAMA_MOE_CACHE_DEDUP"); v != nullptr && *v != '\0') {
             dedup = std::clamp(atoi(v), 0, 2);
@@ -527,6 +535,14 @@ struct llama_moe_cache::impl {
                 }
                 it->host_bytes         += ggml_nbytes(t);
                 devices[id].host_bytes += ggml_nbytes(t);
+            }
+        }
+        for (size_t il = 0; il < key_layer_of.size(); ++il) {
+            for (size_t il2 = il + 1; il2 < key_layer_of.size() && key_layer_of[il] >= 0; ++il2) {
+                if (key_layer_of[il2] == key_layer_of[il]) {
+                    layers[il].later_pass = true;
+                    break;
+                }
             }
         }
         if (groups.empty()) {
@@ -962,7 +978,11 @@ struct llama_moe_cache::impl {
 
         // part of the misses is computed on the CPU once the cache is full, the carry keeps the share right on average
         const uint32_t share_q = has_cpu && g.lru.n_filled == g.lru.n_slots ? cpu_share_q : 0;
+        const bool no_share = loop_fill && async_fill && l.later_pass && sel->src[0]->ne[1] == 1;
         auto n_cpu = [&](size_t n_miss) {
+            if (no_share) {
+                return (size_t) 0;
+            }
             const uint64_t acc = (uint64_t) n_miss*share_q + l.cpu_acc;
             l.cpu_acc = acc & 0xffff;
             return (size_t) (acc >> 16);
