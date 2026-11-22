@@ -17,6 +17,10 @@ wait for previous split -> synchronize to read the router ids -> upload (GPU idl
 
 ## 1. Overlap the expert upload with compute (largest prefill lever)
 
+**Status 04:39: works and merged as opt-in LLAMA_EXPERT_PREFETCH=1** (bug was the NVFP4 `.scale` tensors in the
+recorded order). +16 % prefill at -ub 1024. Next: try it at -ub 2048 (expected bigger gain, compute share is
+larger), shrink the slots (prefetch per expert range instead of whole tensors), and check the hit rate stays ~100 %.
+
 Expected: up to ~+34 % at -ub 1024, up to ~2x (~1500 t/s on 4.8k prompts) at -ub 2048.
 
 Design sketch (ggml-backend scheduler + llama_context copy callback):
