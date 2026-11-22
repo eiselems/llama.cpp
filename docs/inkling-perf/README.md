@@ -19,6 +19,10 @@ Common flags: `--fit off -ngl all -cmoe -b 2048 --moe-cache-cpu-share 0.7 -fa on
 | **balanced** (S8) | `LLAMA_EXPERT_PREFETCH=3` | 1024 | 3400 / 3000 | 632 / 724 (3000: 635 / 720) | 33.9 / 31.8 (3000: 33.2 / 30.9) |
 | **max prefill** (S9) | `LLAMA_EXPERT_PREFETCH=1` | 2048 | 2400 / 2000 | 665 / 935 (2000: 663 / 930) | 31.1 / 28.5 (2000: 29.3 / 27.5) |
 | no prefetch (S5) | - | 1024 | 3400 / 3000 | 582 / 686 | 33.6 / 32.0 |
+| **balanced, q4_0 KV** (S10) | `LLAMA_EXPERT_PREFETCH=3` + `-ctk q4_0 -ctv q4_0` | 1024 | 3650 / ~3150 | 638 / 724 | **35.2 / 33.0** |
+
+q4_0 KV quality check (wikitext-2, -c 4096, 6 chunks): PPL 5.7909 +/- 0.121 vs 5.7771 +/- 0.120 with q8_0 (+0.24 %,
+within the error). It frees ~270 MiB at 32k context, which goes to the MoE cache.
 
 Other measured option: `LLAMA_EXPERT_PREFETCH=3 -ub 2048 --moe-cache-mib 2800` (light desktop) = 632 / 908 prefill,
 32.2 / 29.3 decode - nearly max prefill with better decode.
