@@ -38,6 +38,7 @@ start)
         S12) env=(LLAMA_EXPERT_PREFETCH=1); flags=(-ub 2048 --moe-cache-mib 2650) ;;
         S13) env=(LLAMA_EXPERT_PREFETCH=3 LLAMA_MOE_CACHE_ASYNC_FILL=1); flags=(-ub 1024 --moe-cache-mib 3650) ;;  # S10 + E4
         S14) env=(LLAMA_EXPERT_PREFETCH=1 LLAMA_EXPERT_PREFETCH_SKIP=1); flags=(-ub 1024 --moe-cache-mib 3200) ;;  # S11 + E2
+        S15) env=(LLAMA_EXPERT_PREFETCH=1 LLAMA_EXPERT_PREFETCH_SKIP=1); flags=(-ub 2048 --moe-cache-mib 2650) ;;  # S12 + E2
         *)   echo "unknown preset $preset" >&2; exit 1 ;;
     esac
     # extra args after the preset override the preset (llama.cpp: the last flag wins); EXTRA_ENV adds env vars
