@@ -1,4 +1,4 @@
-# Next steps (as of 2026-11-22 ~03:20)
+# Next steps (as of 2026-11-22 04:30)
 
 ## Where the time goes now
 
@@ -31,6 +31,13 @@ Design sketch (ggml-backend scheduler + llama_context copy callback):
 - Events: copy stream waits on "split that used this slot finished" (recorded on the compute stream), compute
   stream waits on "upload into this slot finished" (recorded on the copy stream).
 - Validate with scripts/inkling-bench.sh (greedy correctness) plus a 4.8k-prompt greedy diff against the current build.
+
+Prototype tried 2026-11-22 04:26 on branch `inkling-prefetch-try` (pushed): llama-level prefetch in the copy
+callback (second CUDA backend instance = second stream, 2 staging slots, device-to-device copy on use).
+Result: no gain at 1k (561.7 vs ~575 t/s) and an assert on the 4.8k prompt (slot sizing must use
+ggml_backend_buft_get_alloc_size, CUDA pads quantized tensors). Before fixing it, find out why there is no overlap:
+likely the MoE cache's per-layer plan() sync still serializes every split. Try the prototype with the MoE cache off
+first to separate the two effects.
 
 ## 2. Make --fit pick the good preset
 
