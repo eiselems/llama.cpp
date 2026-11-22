@@ -8,3 +8,4 @@
 | S5 | preset: ub 1024 (balanced) | `1410a556` | 7758 | 582.4 | 685.8 | 34.1 | 32.1 |
 | S6 | + expert prefetch (opt-in), cache 2600 | `d2514c6ea` | 7753 | 672.9 | 798.5 | 31.4 | 29.8 |
 | S7 | prefetch + ub 2048, cache 2000 (max prefill) | `d25dc474` | 7620 | 659.8 | 924.9 | 29.2 | 26.7 |
+| S8 | single-slot prefetch, cache 3400 (new balanced) | `dee6c0f51` | 7692 | 632.4 | 723.9 | 33.9 | 31.8 |

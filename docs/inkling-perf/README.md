@@ -23,7 +23,11 @@ The same numbers as a table: [progress-table.md](progress-table.md) (raw: [progr
 
 -ub 4096 loses: the bigger compute buffer forces a small cache, and the saved uploads do not make up for it.
 
-Recommended everyday preset:
+**Recommended everyday preset (since 2026-11-22 08:30, step S8):**
+`LLAMA_EXPERT_PREFETCH=3` + `--fit off -ngl all -cmoe -b 2048 -ub 1024 --moe-cache-mib 3400 --moe-cache-cpu-share 0.7 -fa on -ctk q8_0 -ctv q8_0 -c 32768`
+= 632.4 / 723.9 t/s prefill, 33.9 / 31.8 t/s decode (one ~445 MiB prefetch slot, full cache).
+
+Previous everyday preset (S5, still valid without the env var):
 `--fit off -ngl all -cmoe -b 2048 -ub 1024 --moe-cache-mib 3400 --moe-cache-cpu-share 0.7 -fa on -ctk q8_0 -ctv q8_0 -c 32768`
 
 Prefill-heavy mode (merged, opt-in, step S6): `LLAMA_EXPERT_PREFETCH=1` with `--moe-cache-mib 2600` (the two
