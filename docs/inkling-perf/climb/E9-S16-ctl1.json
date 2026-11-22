@@ -1,0 +1,38 @@
+{
+  "name": "E9-S16-ctl1",
+  "base_url": "http://127.0.0.1:8089",
+  "model": "inkling2-mini",
+  "launch": [
+    "env",
+    "bash",
+    "/home/eiselems/Work/llama-cpp/llama.cpp-inkling-perf/scripts/inkling/serve.sh",
+    "start",
+    "S16"
+  ],
+  "stop": [
+    "bash",
+    "/home/eiselems/Work/llama-cpp/llama.cpp-inkling-perf/scripts/inkling/serve.sh",
+    "stop"
+  ],
+  "health_timeout_s": 300,
+  "concurrency": 1,
+  "prefill_lengths": [
+    1100,
+    5900
+  ],
+  "temperature": 1.0,
+  "extra_body": {
+    "top_p": 1.0,
+    "top_k": 0,
+    "min_p": 0.0
+  },
+  "memory": {
+    "cap_gib": 7.5,
+    "probe": [
+      "bash",
+      "/home/eiselems/Work/llama-cpp/llama.cpp-inkling-perf/scripts/inkling/vram.sh"
+    ],
+    "interval_s": 1
+  },
+  "require_ac": false
+}
