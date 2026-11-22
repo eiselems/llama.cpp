@@ -60,3 +60,29 @@ Where the ~11 ms above the serial ceiling go: ~7 ms is per-kernel overhead of ~3
 idle time beyond the CPU expert work (handovers, syncs). The two big GEMV groups are already at 79-86 % of
 bandwidth. Ranked decode levers from this: (a) fewer CPU/GPU handovers and syncs per layer, (b) fewer, larger
 kernels (fusion), (c) GEMV efficiency.
+
+| 11:40-11:50 | E1: large batches skip reading the router ids back before the expert upload (no host sync per MoE layer), opt-in LLAMA_EXPERT_COPY_NOSYNC=1, S12; ctl / cand / ctl | prefill 4.7k 954.4 / 952.8 / 953.0, 958 tok 745 / 743 / 743, c1 33.2 / 33.8 / 33.6; gate PASS, needles 3/3 | **rejected**: neutral (with prefetch the weights never take that path; the scales are tiny) |
+
+### Step 2: prefill at -ub 2048 is compute bound, not upload bound (nsys, 11:50)
+
+S12, one 4,777-token prompt (3 ubatches), 935 t/s under the profiler:
+
+| | time |
+|---|---:|
+| window | 5.11 s |
+| GPU compute (kernels) | 3.97 s |
+| uploads (H2D, copy stream, 85.6 GB at 26.2 GB/s) | 3.34 s, of which **2.69 s overlap compute** |
+| GPU fully idle | 0.30 s |
+
+The prefetch overlap works. The limit is compute: 3.97 s = 11.6 TFLOPS effective (~26 % of FP16 peak), about
+2x the 50 %-of-peak assumption in THEORY.md. Kernels: `mul_mat_q` (experts + dense) 1.39 s (36 %),
+**`flash_attn_tile` 1.22 s (31 %)**, the rest ~1.3 s.
+
+Attention runs in the generic tile kernel because PR #32740 adds the indexed relative-position bias only there
+(the vec and MMA kernels ignore the bias). In the PR thread realugbun reports an unpublished MMA kernel with the bias
+(biased mask load per KV tile, ncols2 forced to 1): 8K prefill 1300 -> 1527, 32K 838 -> 1149 on a 5060 Ti.
+Decode also moved from the vec kernel to the tile kernel (0.4 ms/token here).
+
+Consequence for the levers: at -ub 2048 better upload overlap has little left (0.65 s of upload not overlapped);
+attention in an MMA kernel is the biggest prefill lever there. At -ub 1024 (S11) prefill is still upload bound,
+so skipping experts that are already in the MoE cache (step 4) should help there.
