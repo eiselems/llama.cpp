@@ -1028,6 +1028,14 @@ llama_moe_cache_lookup llama_moe_cache::build_lookup(const llm_graph_context & g
     ggml_tensor * cpu_ids = nullptr;
     if (cpu_map != nullptr) {
         cpu_ids = ggml_get_rows(ctx0, cpu_map, ids); // [1, n_expert_used*n_tokens]
+        // LLAMA_MOE_CACHE_CPU_IDS_ON_CPU=1: look the CPU experts up on the CPU, before the cached experts in the graph.
+        // On the device this lookup lands in the split of the cached experts, and the CPU part has to wait for that
+        // whole split; on the CPU it only needs the selected experts, so the CPU part can run while the device computes.
+        static const bool on_cpu = [] { const char * v = getenv("LLAMA_MOE_CACHE_CPU_IDS_ON_CPU"); return v && atoi(v) != 0; }();
+        if (on_cpu && g.backend_cpu != nullptr) {
+            ggml_backend_sched_set_tensor_backend(g.sched, cpu_ids, g.backend_cpu);
+            ggml_build_forward_expand(g.gf, cpu_ids);
+        }
         cpu_ids = ggml_reshape_2d(ctx0, cpu_ids, selected_experts->ne[0], selected_experts->ne[1]);
     }
 
