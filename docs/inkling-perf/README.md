@@ -1,8 +1,23 @@
 # Inkling-2-Mini perf log (fork branch `inkling-2-perf-improvement`)
 
-RTX 3070 8 GB, Ryzen 5 5600X, 32 GB RAM. Unsloth `Inkling-2-Mini-UD-Q4_K_M`, 32k ctx, q8_0 KV, experts in RAM.
-Every row is measured with `scripts/inkling-bench.sh` (one server session: greedy correctness check, then
-~1k and ~4.8k token prompts with 128 generated tokens). Only rows that pass the correctness check are recorded.
+RTX 3070 8 GB, Ryzen 5 5600X, 32 GB RAM. Unsloth `Inkling-2-Mini-UD-Q4_K_M`, 32k ctx, experts in RAM.
+Rows S0-S12: `scripts/inkling-bench.sh` (one repeated prompt, 128 tokens, single sample). Rows from B10 on:
+`scripts/inkling/bench.py` (vendored from sybil-solutions/inference-optimisation-skill; median of 6 decode prompts,
+greedy correctness gate, long-context needle check, control/candidate/control interleaving). Only rows that pass the
+checks are recorded. Full experiment log and status: [PLAN.md](PLAN.md); ceilings: [THEORY.md](THEORY.md).
+
+## Winners (2026-11-22 14:40, bench.py)
+
+| goal | preset | prefill 958 / 4,724 tok | decode (median of 6) | VRAM peak | start |
+|---|---|---:|---:|---:|---|
+| **max prefill** | **S15** | 850 / **1,003** | 33.2 | 7.13 GiB | `scripts/inkling/serve.sh start S15` |
+| **max decode** (prefill halves) | **S16** | 367 / 379 | **38.6** | 7.48 GiB | `scripts/inkling/serve.sh start S16` |
+| **balanced: decode first** | S13 | 689 / 734 | 37.8 | 7.35 GiB | `scripts/inkling/serve.sh start S13` |
+| **balanced: prefill first** | S14 | 858 / 912 | 35.9 | 7.25 GiB | `scripts/inkling/serve.sh start S14` |
+
+Start: upstream master on the same card did 57.6 / 56.4 t/s prefill and 18.0 t/s decode (S0).
+All presets: q4_0 KV (PPL +0.24 %), 32k context, `--moe-cache-cpu-share 0.7`, `-t 6`; cache sizes assume a light
+desktop (~560 MiB idle GPU use, see below). `serve.sh` holds the exact flags and environment variables.
 
 ![prefill and decode per step](progress.svg)
 
