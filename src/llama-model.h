@@ -1094,6 +1094,9 @@ struct llama_model {
     // optional, runs after the scale pass
     virtual void post_arch_tensors(llama_model_loader &) {}
 
+    // optional, runs once the weights have their buffers (and their data, unless no_alloc)
+    virtual void post_load_tensors() {}
+
 protected:
     llama_model_params params;
 

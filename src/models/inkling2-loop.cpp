@@ -69,6 +69,53 @@ void llama_model_inkling2_loop::post_arch_tensors(llama_model_loader &) {
     }
 }
 
+// The later passes of a core layer get views of its weights in host memory instead of the tensors themselves.
+// The backend scheduler keys the device copy of a host weight (op offload) by tensor: a tensor shared by every pass
+// keeps its copy alive from the first pass to the last, so the device holds the copies of all the core layers' experts
+// at once (+6.4 GiB on Inkling-2-Mini), and only the first pass's split uploads it (wrong experts in passes 2 and 3
+// with the MoE expert upload, #32710 / #32755). A view per pass is an input of its own split and gets its own short-lived
+// copy. Views keep the name (LoRA adapters look weights up by name) and the buffer (the scheduler places ops by it).
+// Ported from unslothai/llama.cpp 3b34f4f2ff (oobabooga).
+void llama_model_inkling2_loop::post_load_tensors() {
+    static_assert(sizeof(llama_layer) % sizeof(ggml_tensor *) == 0, "llama_layer must hold only tensor pointers");
+    constexpr size_t n_ptr = sizeof(llama_layer) / sizeof(ggml_tensor *);
+
+    const size_t n_extra = layers.size() - (size_t) n_phys;
+    if (n_extra == 0) {
+        return;
+    }
+
+    ggml_init_params params = {
+        /*.mem_size   =*/ n_extra * n_ptr * ggml_tensor_overhead(),
+        /*.mem_buffer =*/ nullptr,
+        /*.no_alloc   =*/ true,
+    };
+    ctx_loop_views.reset(ggml_init(params));
+    if (!ctx_loop_views) {
+        throw std::runtime_error("inkling2_loop: failed to create the context for the looped layer views");
+    }
+
+    for (size_t il = n_phys; il < layers.size(); ++il) {
+        ggml_tensor ** w = reinterpret_cast<ggml_tensor **>(&layers[il]);
+        for (size_t k = 0; k < n_ptr; ++k) {
+            if (w[k] == nullptr || w[k]->buffer == nullptr || !ggml_backend_buffer_is_host(w[k]->buffer)) {
+                continue;
+            }
+            ggml_tensor * view = ggml_view_tensor(ctx_loop_views.get(), w[k]);
+            ggml_set_name(view, w[k]->name);
+            if (w[k]->data != nullptr) {
+                if (ggml_backend_view_init(view) != GGML_STATUS_SUCCESS) {
+                    throw std::runtime_error(format("inkling2_loop: failed to create a view of %s", w[k]->name));
+                }
+            } else {
+                // memory-fit pass: the weights have a dummy buffer and no data
+                view->buffer = w[k]->buffer;
+            }
+            w[k] = view;
+        }
+    }
+}
+
 std::unique_ptr<llm_graph_context> llama_model_inkling2_loop::build_arch_graph(const llm_graph_params & params) const {
     return std::make_unique<graph>(params);
 }

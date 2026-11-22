@@ -2297,6 +2297,7 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
     }
 
     if (ml.no_alloc) {
+        post_load_tensors();
         return true;
     }
 
@@ -2326,6 +2327,8 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
     }
 
     load_tensors_hadamard();
+
+    post_load_tensors();
 
     return true;
 }
