@@ -7,3 +7,4 @@
 | S4 | + dedup with CPU share 0.7 | `2ecddfadf` | 7534 | 453.8 | 502.5 | 34.1 | 32.8 |
 | S5 | preset: ub 1024 (balanced) | `1410a556` | 7758 | 582.4 | 685.8 | 34.1 | 32.1 |
 | S6 | LLAMA_EXPERT_PREFETCH=1 (prefill-heavy), cache 2600 | `d2514c6ea` | 7753 | 672.9 | 798.5 | 31.4 | 29.8 |
+| S7 | LLAMA_EXPERT_PREFETCH=1, ub 2048, cache 2000 (max prefill) | `d25dc474` | 7620 | 659.8 | 924.9 | 29.2 | 26.7 |
