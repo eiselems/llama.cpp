@@ -88,8 +88,9 @@ Theoretical ceilings (measured hardware, model bytes/FLOPs): [THEORY.md](THEORY.
 | more CPU threads on S13 (`-t 8` / `-t 12`) | decode 36.5 / 35.5 vs 37.4 / 37.6 with `-t 6` | slower: the CPU expert part is RAM bound |
 | E5: this token's expert uploads over a second stream so CPU part and PCIe run in parallel (`LLAMA_MOE_CACHE_FILL_STREAM=1`), branch `inkling-try-split-path` | decode 36.1 / 35.1 vs S13 37.5 | slower: the scheduler queues the CPU part's input copy behind the uploads; needs a scheduler change |
 | thread polling on S13 (`--poll 100`, `--cpu-strict 1`) | decode 37.5 / 37.5 vs 37.2 / 37.2 | inside noise |
+| `-t 5` / `--poll 100` on S16 | decode 37.8 / 38.2 vs 38.9 / 38.4 | slower / neutral |
 
-Plan for the next session: [NEXT.md](NEXT.md).
+Current status and ranked next levers: STATUS section of [PLAN.md](PLAN.md). Older plan: [NEXT.md](NEXT.md).
 
 ## Decode plateau (2026-11-22 08:44)
 

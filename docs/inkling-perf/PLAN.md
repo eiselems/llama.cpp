@@ -101,3 +101,39 @@ so skipping experts that are already in the MoE cache (step 4) should help there
 | 13:55 | nsys E4+E3 decode | activations reach the CPU early (15 us sync), uploads run on the fill stream in parallel, but in heavy layers the CPU computes its misses for ~500 us alone (GPU idle); averaged ~250-280 us per layer for ~5.3 MB = ~20 GB/s. Without the cache (all experts on the CPU, larger batches per call) the CPU kernel reaches ~33 GB/s | the CPU expert part is the decode critical path; it does not overlap the next attention (data dependency) |
 | 14:00-14:12 | thread polling on S13: ctl / --poll 100 / --poll 100 --cpu-strict 1 / ctl | c1 37.19 / 37.48 / 37.52 / 37.15 | **rejected**: +0.8 %, inside noise; thread wake-up is not the cost |
 | 14:13-14:25 | S13 at -ub 512 with the freed compute buffer in the MoE cache: ctl / cache 3850 / cache 3950 / ctl | c1 37.33 / 38.08 / **38.39** / 37.08; prefill 687 / 367 / 367 / 688 and 736 / 379 / 379 / 736; VRAM peak 7.35 / 7.38 / 7.48 / 7.35 GiB; gate PASS, needles 3/3 | trade-off, not a replacement for S13 (prefill -50 %): kept as an explicit "max decode" preset S16 (+3 % decode) |
+| 14:27-14:38 | S16 tweaks: ctl / -t 5 / --poll 100 / ctl | c1 38.86 / 37.77 / 38.19 / 38.36 | **rejected**: slower / neutral. S16 itself confirmed at ~38.6 |
+
+## STATUS (2026-11-22 14:40)
+
+All numbers: bench.py, median of 6 decode prompts, gate PASS and needles 3/3 at 29.7k on every row.
+
+| metric | upstream master (S0, old harness) | bench.py baseline 11:33 | now (best preset) | ceiling (THEORY.md) |
+|---|---:|---:|---:|---:|
+| prefill, 4.7k-token prompt | 56 | 950 (S12) | **1,003 (S15)** | ~1,200 realistic at -ub 2048 (compute bound, 26 % of FP16 peak); 1,469 with 50 % of peak |
+| prefill, 1k-token prompt | 58 | 745 (S11) | **858 (S14)** | upload bound at -ub 1024 |
+| decode, short prompt | 18 | 36.9 (S10) | **38.6 (S16)** / 37.8 (S13, full prefill) | 58 serial, 108 fully overlapped |
+
+Accepted today: E4 background cache fill (+2 % decode, S13), E2 prefetch skips cached experts (+15 % / +11 % prefill on
+S11 = S14, +5.6 % on S12 = S15, first preset above 1,000 t/s), S16 max-decode preset (-ub 512, bigger cache,
++3 % decode for half the prefill). Rejected (documented above and in the README): E1, E3, E3b, E5, thread counts,
+polling.
+
+What limits further gains (measured with nsys):
+- Decode (~26 ms/token at S13): per layer application attention graph ~190 us (the host must wait for the router ids),
+  cached experts ~110 us, then the CPU computes its misses (98 % of the misses since E4) for ~250-500 us while the GPU
+  idles. The CPU expert kernel reaches only ~20 GB/s at one token (~1.25 experts per call) against 48 GB/s RAM and
+  ~33 GB/s at larger batches. Plus ~7 ms/token of ~3,000 small GPU kernels.
+- Overlapping the CPU part with the GPU is blocked by the scheduler: inputs of the CPU split are copied on the device
+  stream behind the expert uploads (E5); without uploads on the device stream (E4+E3) there is little GPU work left to
+  overlap with (the next attention depends on the CPU result).
+- Prefill at -ub 2048: compute bound; flash attention runs in the generic tile kernel (31 % of prefill) because the
+  indexed relative-position bias exists only there.
+
+Ranked next levers:
+1. CPU MoE kernel at one token (NVFP4 MUL_MAT_ID, ~20 -> ~40 GB/s): decode ~38 -> ~43 t/s. Kernel work.
+2. Relative-position bias in the MMA flash-attention kernel (realugbun measured 838 -> 1149 at 32K): prefill
+   ~1,000 -> ~1,150 at 4.7k, more at long context. Kernel work.
+3. Fewer small GPU kernels per token (fuse activation quantize into the GEMV, more glue fusion): ~2-3 ms/token.
+4. Scheduler: copy the CPU split's inputs before the expert phase / on another stream, then retry E5 (CPU + PCIe in
+   parallel for the misses).
+5. Bias support in the vec kernel for decode attention (0.4 ms/token).
