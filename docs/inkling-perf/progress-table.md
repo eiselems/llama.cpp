@@ -17,3 +17,4 @@
 | B11 | bench.py baseline S11 | `bench.py` | 7424 | 745 | 820 | 35.3 | 26.9 |
 | B12 | bench.py baseline S12 | `bench.py` | 7301 | 737 | 950 | 33.1 | 27.4 |
 | E4 | + background cache fill (S13 = S10 + E4) | `d0c94745` | 7526 | 689 | 734 | 37.8 | 29 |
+| E2 | + prefetch skips cached experts (S14 = S11 + E2) | `1bf03dedd` | 7424 | 858 | 912 | 35.9 | 28.1 |

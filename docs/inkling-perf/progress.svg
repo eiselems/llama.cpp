@@ -37,45 +37,47 @@ text { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fil
 <text class="tick" x="56" y="167.0" text-anchor="end">937.5</text>
 <line class="grid" x1="64" x2="840" y1="108.0" y2="108.0"/>
 <text class="tick" x="56" y="112.0" text-anchor="end">1250</text>
-<polyline class="l1" points="86.8,317.9 132.5,315.6 178.1,315.0 223.8,251.5 269.4,248.1 315.1,225.5 360.7,209.6 406.4,211.9 452.0,216.7 497.6,211.0 543.3,215.8 588.9,207.9 634.6,209.0 680.2,206.9 725.9,196.9 771.5,198.3 817.2,206.7"/>
-<circle class="m1" cx="86.8" cy="317.9" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): 1k prompt 57.6 t/s, VRAM 6307 MiB</title></circle>
-<circle class="m1" cx="132.5" cy="315.6" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): 1k prompt 70.7 t/s, VRAM 6596 MiB</title></circle>
-<circle class="m1" cx="178.1" cy="315.0" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): 1k prompt 74.1 t/s, VRAM 6420 MiB</title></circle>
-<circle class="m1" cx="223.8" cy="251.5" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): 1k prompt 434.4 t/s, VRAM 7441 MiB</title></circle>
-<circle class="m1" cx="269.4" cy="248.1" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): 1k prompt 453.8 t/s, VRAM 7534 MiB</title></circle>
-<circle class="m1" cx="315.1" cy="225.5" r="5"><title>S5 preset: ub 1024 (balanced) (1410a556): 1k prompt 582.4 t/s, VRAM 7758 MiB</title></circle>
-<circle class="m1" cx="360.7" cy="209.6" r="5"><title>S6 + expert prefetch (opt-in), cache 2600 (d2514c6ea): 1k prompt 672.9 t/s, VRAM 7753 MiB</title></circle>
-<circle class="m1" cx="406.4" cy="211.9" r="5"><title>S7 prefetch + ub 2048, cache 2000 (max prefill) (d25dc474): 1k prompt 659.8 t/s, VRAM 7620 MiB</title></circle>
-<circle class="m1" cx="452.0" cy="216.7" r="5"><title>S8 single-slot prefetch, cache 3400 (new balanced) (dee6c0f51): 1k prompt 632.4 t/s, VRAM 7692 MiB</title></circle>
-<circle class="m1" cx="497.6" cy="211.0" r="5"><title>S9 prefetch ub 2048, cache 2400 (max prefill, light desktop) (aff1063b1): 1k prompt 664.5 t/s, VRAM 7504 MiB</title></circle>
-<circle class="m1" cx="543.3" cy="215.8" r="5"><title>S10 balanced + q4_0 KV, cache 3650 (dafda2ad7): 1k prompt 637.5 t/s, VRAM 7604 MiB</title></circle>
-<circle class="m1" cx="588.9" cy="207.9" r="5"><title>S11 2-slot prefetch + q4_0 KV, cache 3200 (355ff0d1d): 1k prompt 682.2 t/s, VRAM 7502 MiB</title></circle>
-<circle class="m1" cx="634.6" cy="209.0" r="5"><title>S12 max prefill + q4_0 KV, ub 2048, cache 2650 (6b6115871): 1k prompt 676.2 t/s, VRAM 7382 MiB</title></circle>
-<circle class="m1" cx="680.2" cy="206.9" r="5"><title>B10 bench.py baseline S10 (median of 6, 3 runs) (bench.py): 1k prompt 688 t/s, VRAM 7526 MiB</title></circle>
-<circle class="m1" cx="725.9" cy="196.9" r="5"><title>B11 bench.py baseline S11 (bench.py): 1k prompt 745 t/s, VRAM 7424 MiB</title></circle>
-<circle class="m1" cx="771.5" cy="198.3" r="5"><title>B12 bench.py baseline S12 (bench.py): 1k prompt 737 t/s, VRAM 7301 MiB</title></circle>
-<circle class="m1" cx="817.2" cy="206.7" r="5"><title>E4 + background cache fill (S13 = S10 + E4) (d0c94745): 1k prompt 689 t/s, VRAM 7526 MiB</title></circle>
-<text class="val" x="827.2" y="220.7">689</text>
-<polyline class="l2" points="86.8,318.1 132.5,314.4 178.1,313.7 223.8,239.8 269.4,239.6 315.1,207.3 360.7,187.5 406.4,165.2 452.0,200.6 497.6,163.5 543.3,200.6 588.9,186.8 634.6,164.0 680.2,198.6 725.9,183.7 771.5,160.8 817.2,198.8"/>
-<circle class="m2" cx="86.8" cy="318.1" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): 4.8k prompt 56.4 t/s, VRAM 6307 MiB</title></circle>
-<circle class="m2" cx="132.5" cy="314.4" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): 4.8k prompt 77.1 t/s, VRAM 6596 MiB</title></circle>
-<circle class="m2" cx="178.1" cy="313.7" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): 4.8k prompt 81.5 t/s, VRAM 6420 MiB</title></circle>
-<circle class="m2" cx="223.8" cy="239.8" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): 4.8k prompt 501.3 t/s, VRAM 7441 MiB</title></circle>
-<circle class="m2" cx="269.4" cy="239.6" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): 4.8k prompt 502.5 t/s, VRAM 7534 MiB</title></circle>
-<circle class="m2" cx="315.1" cy="207.3" r="5"><title>S5 preset: ub 1024 (balanced) (1410a556): 4.8k prompt 685.8 t/s, VRAM 7758 MiB</title></circle>
-<circle class="m2" cx="360.7" cy="187.5" r="5"><title>S6 + expert prefetch (opt-in), cache 2600 (d2514c6ea): 4.8k prompt 798.5 t/s, VRAM 7753 MiB</title></circle>
-<circle class="m2" cx="406.4" cy="165.2" r="5"><title>S7 prefetch + ub 2048, cache 2000 (max prefill) (d25dc474): 4.8k prompt 924.9 t/s, VRAM 7620 MiB</title></circle>
-<circle class="m2" cx="452.0" cy="200.6" r="5"><title>S8 single-slot prefetch, cache 3400 (new balanced) (dee6c0f51): 4.8k prompt 723.9 t/s, VRAM 7692 MiB</title></circle>
-<circle class="m2" cx="497.6" cy="163.5" r="5"><title>S9 prefetch ub 2048, cache 2400 (max prefill, light desktop) (aff1063b1): 4.8k prompt 934.5 t/s, VRAM 7504 MiB</title></circle>
-<circle class="m2" cx="543.3" cy="200.6" r="5"><title>S10 balanced + q4_0 KV, cache 3650 (dafda2ad7): 4.8k prompt 723.9 t/s, VRAM 7604 MiB</title></circle>
-<circle class="m2" cx="588.9" cy="186.8" r="5"><title>S11 2-slot prefetch + q4_0 KV, cache 3200 (355ff0d1d): 4.8k prompt 802.2 t/s, VRAM 7502 MiB</title></circle>
-<circle class="m2" cx="634.6" cy="164.0" r="5"><title>S12 max prefill + q4_0 KV, ub 2048, cache 2650 (6b6115871): 4.8k prompt 932 t/s, VRAM 7382 MiB</title></circle>
-<circle class="m2" cx="680.2" cy="198.6" r="5"><title>B10 bench.py baseline S10 (median of 6, 3 runs) (bench.py): 4.8k prompt 735 t/s, VRAM 7526 MiB</title></circle>
-<circle class="m2" cx="725.9" cy="183.7" r="5"><title>B11 bench.py baseline S11 (bench.py): 4.8k prompt 820 t/s, VRAM 7424 MiB</title></circle>
-<circle class="m2" cx="771.5" cy="160.8" r="5"><title>B12 bench.py baseline S12 (bench.py): 4.8k prompt 950 t/s, VRAM 7301 MiB</title></circle>
-<circle class="m2" cx="817.2" cy="198.8" r="5"><title>E4 + background cache fill (S13 = S10 + E4) (d0c94745): 4.8k prompt 734 t/s, VRAM 7526 MiB</title></circle>
-<text class="val" x="827.2" y="192.8">734</text>
-<text class="tick" x="840" y="98" text-anchor="end">1k prompt: 57.6 -> 689 (12.0x)</text>
+<polyline class="l1" points="85.6,317.9 128.7,315.6 171.8,315.0 214.9,251.5 258.0,248.1 301.1,225.5 344.2,209.6 387.3,211.9 430.4,216.7 473.6,211.0 516.7,215.8 559.8,207.9 602.9,209.0 646.0,206.9 689.1,196.9 732.2,198.3 775.3,206.7 818.4,177.0"/>
+<circle class="m1" cx="85.6" cy="317.9" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): 1k prompt 57.6 t/s, VRAM 6307 MiB</title></circle>
+<circle class="m1" cx="128.7" cy="315.6" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): 1k prompt 70.7 t/s, VRAM 6596 MiB</title></circle>
+<circle class="m1" cx="171.8" cy="315.0" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): 1k prompt 74.1 t/s, VRAM 6420 MiB</title></circle>
+<circle class="m1" cx="214.9" cy="251.5" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): 1k prompt 434.4 t/s, VRAM 7441 MiB</title></circle>
+<circle class="m1" cx="258.0" cy="248.1" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): 1k prompt 453.8 t/s, VRAM 7534 MiB</title></circle>
+<circle class="m1" cx="301.1" cy="225.5" r="5"><title>S5 preset: ub 1024 (balanced) (1410a556): 1k prompt 582.4 t/s, VRAM 7758 MiB</title></circle>
+<circle class="m1" cx="344.2" cy="209.6" r="5"><title>S6 + expert prefetch (opt-in), cache 2600 (d2514c6ea): 1k prompt 672.9 t/s, VRAM 7753 MiB</title></circle>
+<circle class="m1" cx="387.3" cy="211.9" r="5"><title>S7 prefetch + ub 2048, cache 2000 (max prefill) (d25dc474): 1k prompt 659.8 t/s, VRAM 7620 MiB</title></circle>
+<circle class="m1" cx="430.4" cy="216.7" r="5"><title>S8 single-slot prefetch, cache 3400 (new balanced) (dee6c0f51): 1k prompt 632.4 t/s, VRAM 7692 MiB</title></circle>
+<circle class="m1" cx="473.6" cy="211.0" r="5"><title>S9 prefetch ub 2048, cache 2400 (max prefill, light desktop) (aff1063b1): 1k prompt 664.5 t/s, VRAM 7504 MiB</title></circle>
+<circle class="m1" cx="516.7" cy="215.8" r="5"><title>S10 balanced + q4_0 KV, cache 3650 (dafda2ad7): 1k prompt 637.5 t/s, VRAM 7604 MiB</title></circle>
+<circle class="m1" cx="559.8" cy="207.9" r="5"><title>S11 2-slot prefetch + q4_0 KV, cache 3200 (355ff0d1d): 1k prompt 682.2 t/s, VRAM 7502 MiB</title></circle>
+<circle class="m1" cx="602.9" cy="209.0" r="5"><title>S12 max prefill + q4_0 KV, ub 2048, cache 2650 (6b6115871): 1k prompt 676.2 t/s, VRAM 7382 MiB</title></circle>
+<circle class="m1" cx="646.0" cy="206.9" r="5"><title>B10 bench.py baseline S10 (median of 6, 3 runs) (bench.py): 1k prompt 688 t/s, VRAM 7526 MiB</title></circle>
+<circle class="m1" cx="689.1" cy="196.9" r="5"><title>B11 bench.py baseline S11 (bench.py): 1k prompt 745 t/s, VRAM 7424 MiB</title></circle>
+<circle class="m1" cx="732.2" cy="198.3" r="5"><title>B12 bench.py baseline S12 (bench.py): 1k prompt 737 t/s, VRAM 7301 MiB</title></circle>
+<circle class="m1" cx="775.3" cy="206.7" r="5"><title>E4 + background cache fill (S13 = S10 + E4) (d0c94745): 1k prompt 689 t/s, VRAM 7526 MiB</title></circle>
+<circle class="m1" cx="818.4" cy="177.0" r="5"><title>E2 + prefetch skips cached experts (S14 = S11 + E2) (1bf03dedd): 1k prompt 858 t/s, VRAM 7424 MiB</title></circle>
+<text class="val" x="828.4" y="191.0">858</text>
+<polyline class="l2" points="85.6,318.1 128.7,314.4 171.8,313.7 214.9,239.8 258.0,239.6 301.1,207.3 344.2,187.5 387.3,165.2 430.4,200.6 473.6,163.5 516.7,200.6 559.8,186.8 602.9,164.0 646.0,198.6 689.1,183.7 732.2,160.8 775.3,198.8 818.4,167.5"/>
+<circle class="m2" cx="85.6" cy="318.1" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): 4.8k prompt 56.4 t/s, VRAM 6307 MiB</title></circle>
+<circle class="m2" cx="128.7" cy="314.4" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): 4.8k prompt 77.1 t/s, VRAM 6596 MiB</title></circle>
+<circle class="m2" cx="171.8" cy="313.7" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): 4.8k prompt 81.5 t/s, VRAM 6420 MiB</title></circle>
+<circle class="m2" cx="214.9" cy="239.8" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): 4.8k prompt 501.3 t/s, VRAM 7441 MiB</title></circle>
+<circle class="m2" cx="258.0" cy="239.6" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): 4.8k prompt 502.5 t/s, VRAM 7534 MiB</title></circle>
+<circle class="m2" cx="301.1" cy="207.3" r="5"><title>S5 preset: ub 1024 (balanced) (1410a556): 4.8k prompt 685.8 t/s, VRAM 7758 MiB</title></circle>
+<circle class="m2" cx="344.2" cy="187.5" r="5"><title>S6 + expert prefetch (opt-in), cache 2600 (d2514c6ea): 4.8k prompt 798.5 t/s, VRAM 7753 MiB</title></circle>
+<circle class="m2" cx="387.3" cy="165.2" r="5"><title>S7 prefetch + ub 2048, cache 2000 (max prefill) (d25dc474): 4.8k prompt 924.9 t/s, VRAM 7620 MiB</title></circle>
+<circle class="m2" cx="430.4" cy="200.6" r="5"><title>S8 single-slot prefetch, cache 3400 (new balanced) (dee6c0f51): 4.8k prompt 723.9 t/s, VRAM 7692 MiB</title></circle>
+<circle class="m2" cx="473.6" cy="163.5" r="5"><title>S9 prefetch ub 2048, cache 2400 (max prefill, light desktop) (aff1063b1): 4.8k prompt 934.5 t/s, VRAM 7504 MiB</title></circle>
+<circle class="m2" cx="516.7" cy="200.6" r="5"><title>S10 balanced + q4_0 KV, cache 3650 (dafda2ad7): 4.8k prompt 723.9 t/s, VRAM 7604 MiB</title></circle>
+<circle class="m2" cx="559.8" cy="186.8" r="5"><title>S11 2-slot prefetch + q4_0 KV, cache 3200 (355ff0d1d): 4.8k prompt 802.2 t/s, VRAM 7502 MiB</title></circle>
+<circle class="m2" cx="602.9" cy="164.0" r="5"><title>S12 max prefill + q4_0 KV, ub 2048, cache 2650 (6b6115871): 4.8k prompt 932 t/s, VRAM 7382 MiB</title></circle>
+<circle class="m2" cx="646.0" cy="198.6" r="5"><title>B10 bench.py baseline S10 (median of 6, 3 runs) (bench.py): 4.8k prompt 735 t/s, VRAM 7526 MiB</title></circle>
+<circle class="m2" cx="689.1" cy="183.7" r="5"><title>B11 bench.py baseline S11 (bench.py): 4.8k prompt 820 t/s, VRAM 7424 MiB</title></circle>
+<circle class="m2" cx="732.2" cy="160.8" r="5"><title>B12 bench.py baseline S12 (bench.py): 4.8k prompt 950 t/s, VRAM 7301 MiB</title></circle>
+<circle class="m2" cx="775.3" cy="198.8" r="5"><title>E4 + background cache fill (S13 = S10 + E4) (d0c94745): 4.8k prompt 734 t/s, VRAM 7526 MiB</title></circle>
+<circle class="m2" cx="818.4" cy="167.5" r="5"><title>E2 + prefetch skips cached experts (S14 = S11 + E2) (1bf03dedd): 4.8k prompt 912 t/s, VRAM 7424 MiB</title></circle>
+<text class="val" x="828.4" y="161.5">912</text>
+<text class="tick" x="840" y="98" text-anchor="end">1k prompt: 57.6 -> 858 (14.9x)</text>
 <text class="ptitle" x="64" y="376">Decode (tokens/s; S rows: 128 tokens after 1k / 4.8k prompts; B/E rows: see subtitle)</text>
 <line class="base" x1="64" x2="840" y1="606.0" y2="606.0"/>
 <text class="tick" x="56" y="610.0" text-anchor="end">0</text>
@@ -87,113 +89,119 @@ text { font-family: -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif; fil
 <text class="tick" x="56" y="445.0" text-anchor="end">37.5</text>
 <line class="grid" x1="64" x2="840" y1="386.0" y2="386.0"/>
 <text class="tick" x="56" y="390.0" text-anchor="end">50</text>
-<polyline class="l1" points="86.8,526.8 132.5,497.3 178.1,485.4 223.8,473.6 269.4,456.0 315.1,456.0 360.7,467.8 406.4,477.5 452.0,456.8 497.6,469.2 543.3,451.1 588.9,459.0 634.6,465.2 680.2,443.6 725.9,450.7 771.5,460.4 817.2,439.7"/>
-<circle class="m1" cx="86.8" cy="526.8" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): after 1k 18 t/s, VRAM 6307 MiB</title></circle>
-<circle class="m1" cx="132.5" cy="497.3" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): after 1k 24.7 t/s, VRAM 6596 MiB</title></circle>
-<circle class="m1" cx="178.1" cy="485.4" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): after 1k 27.4 t/s, VRAM 6420 MiB</title></circle>
-<circle class="m1" cx="223.8" cy="473.6" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): after 1k 30.1 t/s, VRAM 7441 MiB</title></circle>
-<circle class="m1" cx="269.4" cy="456.0" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): after 1k 34.1 t/s, VRAM 7534 MiB</title></circle>
-<circle class="m1" cx="315.1" cy="456.0" r="5"><title>S5 preset: ub 1024 (balanced) (1410a556): after 1k 34.1 t/s, VRAM 7758 MiB</title></circle>
-<circle class="m1" cx="360.7" cy="467.8" r="5"><title>S6 + expert prefetch (opt-in), cache 2600 (d2514c6ea): after 1k 31.4 t/s, VRAM 7753 MiB</title></circle>
-<circle class="m1" cx="406.4" cy="477.5" r="5"><title>S7 prefetch + ub 2048, cache 2000 (max prefill) (d25dc474): after 1k 29.2 t/s, VRAM 7620 MiB</title></circle>
-<circle class="m1" cx="452.0" cy="456.8" r="5"><title>S8 single-slot prefetch, cache 3400 (new balanced) (dee6c0f51): after 1k 33.9 t/s, VRAM 7692 MiB</title></circle>
-<circle class="m1" cx="497.6" cy="469.2" r="5"><title>S9 prefetch ub 2048, cache 2400 (max prefill, light desktop) (aff1063b1): after 1k 31.1 t/s, VRAM 7504 MiB</title></circle>
-<circle class="m1" cx="543.3" cy="451.1" r="5"><title>S10 balanced + q4_0 KV, cache 3650 (dafda2ad7): after 1k 35.2 t/s, VRAM 7604 MiB</title></circle>
-<circle class="m1" cx="588.9" cy="459.0" r="5"><title>S11 2-slot prefetch + q4_0 KV, cache 3200 (355ff0d1d): after 1k 33.4 t/s, VRAM 7502 MiB</title></circle>
-<circle class="m1" cx="634.6" cy="465.2" r="5"><title>S12 max prefill + q4_0 KV, ub 2048, cache 2650 (6b6115871): after 1k 32 t/s, VRAM 7382 MiB</title></circle>
-<circle class="m1" cx="680.2" cy="443.6" r="5"><title>B10 bench.py baseline S10 (median of 6, 3 runs) (bench.py): after 1k 36.9 t/s, VRAM 7526 MiB</title></circle>
-<circle class="m1" cx="725.9" cy="450.7" r="5"><title>B11 bench.py baseline S11 (bench.py): after 1k 35.3 t/s, VRAM 7424 MiB</title></circle>
-<circle class="m1" cx="771.5" cy="460.4" r="5"><title>B12 bench.py baseline S12 (bench.py): after 1k 33.1 t/s, VRAM 7301 MiB</title></circle>
-<circle class="m1" cx="817.2" cy="439.7" r="5"><title>E4 + background cache fill (S13 = S10 + E4) (d0c94745): after 1k 37.8 t/s, VRAM 7526 MiB</title></circle>
-<text class="val" x="827.2" y="433.7">37.8</text>
-<polyline class="l2" points="86.8,529.9 132.5,499.1 178.1,486.8 223.8,478.8 269.4,461.7 315.1,464.8 360.7,474.9 406.4,488.5 452.0,466.1 497.6,480.6 543.3,460.8 588.9,467.0 634.6,485.0 680.2,485.4 725.9,487.6 771.5,485.4 817.2,478.4"/>
-<circle class="m2" cx="86.8" cy="529.9" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): after 4.8k 17.3 t/s, VRAM 6307 MiB</title></circle>
-<circle class="m2" cx="132.5" cy="499.1" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): after 4.8k 24.3 t/s, VRAM 6596 MiB</title></circle>
-<circle class="m2" cx="178.1" cy="486.8" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): after 4.8k 27.1 t/s, VRAM 6420 MiB</title></circle>
-<circle class="m2" cx="223.8" cy="478.8" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): after 4.8k 28.9 t/s, VRAM 7441 MiB</title></circle>
-<circle class="m2" cx="269.4" cy="461.7" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): after 4.8k 32.8 t/s, VRAM 7534 MiB</title></circle>
-<circle class="m2" cx="315.1" cy="464.8" r="5"><title>S5 preset: ub 1024 (balanced) (1410a556): after 4.8k 32.1 t/s, VRAM 7758 MiB</title></circle>
-<circle class="m2" cx="360.7" cy="474.9" r="5"><title>S6 + expert prefetch (opt-in), cache 2600 (d2514c6ea): after 4.8k 29.8 t/s, VRAM 7753 MiB</title></circle>
-<circle class="m2" cx="406.4" cy="488.5" r="5"><title>S7 prefetch + ub 2048, cache 2000 (max prefill) (d25dc474): after 4.8k 26.7 t/s, VRAM 7620 MiB</title></circle>
-<circle class="m2" cx="452.0" cy="466.1" r="5"><title>S8 single-slot prefetch, cache 3400 (new balanced) (dee6c0f51): after 4.8k 31.8 t/s, VRAM 7692 MiB</title></circle>
-<circle class="m2" cx="497.6" cy="480.6" r="5"><title>S9 prefetch ub 2048, cache 2400 (max prefill, light desktop) (aff1063b1): after 4.8k 28.5 t/s, VRAM 7504 MiB</title></circle>
-<circle class="m2" cx="543.3" cy="460.8" r="5"><title>S10 balanced + q4_0 KV, cache 3650 (dafda2ad7): after 4.8k 33 t/s, VRAM 7604 MiB</title></circle>
-<circle class="m2" cx="588.9" cy="467.0" r="5"><title>S11 2-slot prefetch + q4_0 KV, cache 3200 (355ff0d1d): after 4.8k 31.6 t/s, VRAM 7502 MiB</title></circle>
-<circle class="m2" cx="634.6" cy="485.0" r="5"><title>S12 max prefill + q4_0 KV, ub 2048, cache 2650 (6b6115871): after 4.8k 27.5 t/s, VRAM 7382 MiB</title></circle>
-<circle class="m2" cx="680.2" cy="485.4" r="5"><title>B10 bench.py baseline S10 (median of 6, 3 runs) (bench.py): after 4.8k 27.4 t/s, VRAM 7526 MiB</title></circle>
-<circle class="m2" cx="725.9" cy="487.6" r="5"><title>B11 bench.py baseline S11 (bench.py): after 4.8k 26.9 t/s, VRAM 7424 MiB</title></circle>
-<circle class="m2" cx="771.5" cy="485.4" r="5"><title>B12 bench.py baseline S12 (bench.py): after 4.8k 27.4 t/s, VRAM 7301 MiB</title></circle>
-<circle class="m2" cx="817.2" cy="478.4" r="5"><title>E4 + background cache fill (S13 = S10 + E4) (d0c94745): after 4.8k 29 t/s, VRAM 7526 MiB</title></circle>
-<text class="val" x="827.2" y="492.4">29</text>
-<text class="tick" x="840" y="376" text-anchor="end">after 1k: 18 -> 37.8 (2.1x)</text>
-<text class="ptitle" x="86.8" y="622" text-anchor="middle" style="font-size:12px">S0</text>
-<text class="tick" x="86.8" y="636" text-anchor="middle">upstream</text>
-<text class="tick" x="86.8" y="649" text-anchor="middle">master</text>
-<text class="tick" x="86.8" y="662" text-anchor="middle">(no-op-</text>
-<text class="ptitle" x="132.5" y="622" text-anchor="middle" style="font-size:12px">S1</text>
-<text class="tick" x="132.5" y="636" text-anchor="middle">+ MoE</text>
-<text class="tick" x="132.5" y="649" text-anchor="middle">cache</text>
-<text class="tick" x="132.5" y="662" text-anchor="middle">dedup</text>
-<text class="ptitle" x="178.1" y="622" text-anchor="middle" style="font-size:12px">S2</text>
-<text class="tick" x="178.1" y="636" text-anchor="middle">+ fused</text>
-<text class="tick" x="178.1" y="649" text-anchor="middle">glue ops +</text>
-<text class="tick" x="178.1" y="662" text-anchor="middle">FA bias</text>
-<text class="ptitle" x="223.8" y="622" text-anchor="middle" style="font-size:12px">S3</text>
-<text class="tick" x="223.8" y="636" text-anchor="middle">op-offload</text>
-<text class="tick" x="223.8" y="649" text-anchor="middle">on (views</text>
-<text class="tick" x="223.8" y="662" text-anchor="middle">fix),</text>
-<text class="ptitle" x="269.4" y="622" text-anchor="middle" style="font-size:12px">S4</text>
-<text class="tick" x="269.4" y="636" text-anchor="middle">+ dedup</text>
-<text class="tick" x="269.4" y="649" text-anchor="middle">with CPU</text>
-<text class="tick" x="269.4" y="662" text-anchor="middle">share 0.7</text>
-<text class="ptitle" x="315.1" y="622" text-anchor="middle" style="font-size:12px">S5</text>
-<text class="tick" x="315.1" y="636" text-anchor="middle">preset: ub</text>
-<text class="tick" x="315.1" y="649" text-anchor="middle">1024</text>
-<text class="tick" x="315.1" y="662" text-anchor="middle">(balanced)</text>
-<text class="ptitle" x="360.7" y="622" text-anchor="middle" style="font-size:12px">S6</text>
-<text class="tick" x="360.7" y="636" text-anchor="middle">+ expert</text>
-<text class="tick" x="360.7" y="649" text-anchor="middle">prefetch</text>
-<text class="tick" x="360.7" y="662" text-anchor="middle">(opt-in),</text>
-<text class="ptitle" x="406.4" y="622" text-anchor="middle" style="font-size:12px">S7</text>
-<text class="tick" x="406.4" y="636" text-anchor="middle">prefetch +</text>
-<text class="tick" x="406.4" y="649" text-anchor="middle">ub 2048,</text>
-<text class="tick" x="406.4" y="662" text-anchor="middle">cache 2000</text>
-<text class="ptitle" x="452.0" y="622" text-anchor="middle" style="font-size:12px">S8</text>
-<text class="tick" x="452.0" y="636" text-anchor="middle">single-</text>
-<text class="tick" x="452.0" y="649" text-anchor="middle">slot</text>
-<text class="tick" x="452.0" y="662" text-anchor="middle">prefetch,</text>
-<text class="ptitle" x="497.6" y="622" text-anchor="middle" style="font-size:12px">S9</text>
-<text class="tick" x="497.6" y="636" text-anchor="middle">prefetch</text>
-<text class="tick" x="497.6" y="649" text-anchor="middle">ub 2048,</text>
-<text class="tick" x="497.6" y="662" text-anchor="middle">cache 2400</text>
-<text class="ptitle" x="543.3" y="622" text-anchor="middle" style="font-size:12px">S10</text>
-<text class="tick" x="543.3" y="636" text-anchor="middle">balanced +</text>
-<text class="tick" x="543.3" y="649" text-anchor="middle">q4_0 KV,</text>
-<text class="tick" x="543.3" y="662" text-anchor="middle">cache 3650</text>
-<text class="ptitle" x="588.9" y="622" text-anchor="middle" style="font-size:12px">S11</text>
-<text class="tick" x="588.9" y="636" text-anchor="middle">2-slot</text>
-<text class="tick" x="588.9" y="649" text-anchor="middle">prefetch +</text>
-<text class="tick" x="588.9" y="662" text-anchor="middle">q4_0 KV,</text>
-<text class="ptitle" x="634.6" y="622" text-anchor="middle" style="font-size:12px">S12</text>
-<text class="tick" x="634.6" y="636" text-anchor="middle">max</text>
-<text class="tick" x="634.6" y="649" text-anchor="middle">prefill +</text>
-<text class="tick" x="634.6" y="662" text-anchor="middle">q4_0 KV,</text>
-<text class="ptitle" x="680.2" y="622" text-anchor="middle" style="font-size:12px">B10</text>
-<text class="tick" x="680.2" y="636" text-anchor="middle">bench.py</text>
-<text class="tick" x="680.2" y="649" text-anchor="middle">baseline</text>
-<text class="tick" x="680.2" y="662" text-anchor="middle">S10</text>
-<text class="ptitle" x="725.9" y="622" text-anchor="middle" style="font-size:12px">B11</text>
-<text class="tick" x="725.9" y="636" text-anchor="middle">bench.py</text>
-<text class="tick" x="725.9" y="649" text-anchor="middle">baseline</text>
-<text class="tick" x="725.9" y="662" text-anchor="middle">S11</text>
-<text class="ptitle" x="771.5" y="622" text-anchor="middle" style="font-size:12px">B12</text>
-<text class="tick" x="771.5" y="636" text-anchor="middle">bench.py</text>
-<text class="tick" x="771.5" y="649" text-anchor="middle">baseline</text>
-<text class="tick" x="771.5" y="662" text-anchor="middle">S12</text>
-<text class="ptitle" x="817.2" y="622" text-anchor="middle" style="font-size:12px">E4</text>
-<text class="tick" x="817.2" y="636" text-anchor="middle">+</text>
-<text class="tick" x="817.2" y="649" text-anchor="middle">background</text>
-<text class="tick" x="817.2" y="662" text-anchor="middle">cache fill</text>
+<polyline class="l1" points="85.6,526.8 128.7,497.3 171.8,485.4 214.9,473.6 258.0,456.0 301.1,456.0 344.2,467.8 387.3,477.5 430.4,456.8 473.6,469.2 516.7,451.1 559.8,459.0 602.9,465.2 646.0,443.6 689.1,450.7 732.2,460.4 775.3,439.7 818.4,448.0"/>
+<circle class="m1" cx="85.6" cy="526.8" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): after 1k 18 t/s, VRAM 6307 MiB</title></circle>
+<circle class="m1" cx="128.7" cy="497.3" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): after 1k 24.7 t/s, VRAM 6596 MiB</title></circle>
+<circle class="m1" cx="171.8" cy="485.4" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): after 1k 27.4 t/s, VRAM 6420 MiB</title></circle>
+<circle class="m1" cx="214.9" cy="473.6" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): after 1k 30.1 t/s, VRAM 7441 MiB</title></circle>
+<circle class="m1" cx="258.0" cy="456.0" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): after 1k 34.1 t/s, VRAM 7534 MiB</title></circle>
+<circle class="m1" cx="301.1" cy="456.0" r="5"><title>S5 preset: ub 1024 (balanced) (1410a556): after 1k 34.1 t/s, VRAM 7758 MiB</title></circle>
+<circle class="m1" cx="344.2" cy="467.8" r="5"><title>S6 + expert prefetch (opt-in), cache 2600 (d2514c6ea): after 1k 31.4 t/s, VRAM 7753 MiB</title></circle>
+<circle class="m1" cx="387.3" cy="477.5" r="5"><title>S7 prefetch + ub 2048, cache 2000 (max prefill) (d25dc474): after 1k 29.2 t/s, VRAM 7620 MiB</title></circle>
+<circle class="m1" cx="430.4" cy="456.8" r="5"><title>S8 single-slot prefetch, cache 3400 (new balanced) (dee6c0f51): after 1k 33.9 t/s, VRAM 7692 MiB</title></circle>
+<circle class="m1" cx="473.6" cy="469.2" r="5"><title>S9 prefetch ub 2048, cache 2400 (max prefill, light desktop) (aff1063b1): after 1k 31.1 t/s, VRAM 7504 MiB</title></circle>
+<circle class="m1" cx="516.7" cy="451.1" r="5"><title>S10 balanced + q4_0 KV, cache 3650 (dafda2ad7): after 1k 35.2 t/s, VRAM 7604 MiB</title></circle>
+<circle class="m1" cx="559.8" cy="459.0" r="5"><title>S11 2-slot prefetch + q4_0 KV, cache 3200 (355ff0d1d): after 1k 33.4 t/s, VRAM 7502 MiB</title></circle>
+<circle class="m1" cx="602.9" cy="465.2" r="5"><title>S12 max prefill + q4_0 KV, ub 2048, cache 2650 (6b6115871): after 1k 32 t/s, VRAM 7382 MiB</title></circle>
+<circle class="m1" cx="646.0" cy="443.6" r="5"><title>B10 bench.py baseline S10 (median of 6, 3 runs) (bench.py): after 1k 36.9 t/s, VRAM 7526 MiB</title></circle>
+<circle class="m1" cx="689.1" cy="450.7" r="5"><title>B11 bench.py baseline S11 (bench.py): after 1k 35.3 t/s, VRAM 7424 MiB</title></circle>
+<circle class="m1" cx="732.2" cy="460.4" r="5"><title>B12 bench.py baseline S12 (bench.py): after 1k 33.1 t/s, VRAM 7301 MiB</title></circle>
+<circle class="m1" cx="775.3" cy="439.7" r="5"><title>E4 + background cache fill (S13 = S10 + E4) (d0c94745): after 1k 37.8 t/s, VRAM 7526 MiB</title></circle>
+<circle class="m1" cx="818.4" cy="448.0" r="5"><title>E2 + prefetch skips cached experts (S14 = S11 + E2) (1bf03dedd): after 1k 35.9 t/s, VRAM 7424 MiB</title></circle>
+<text class="val" x="828.4" y="442.0">35.9</text>
+<polyline class="l2" points="85.6,529.9 128.7,499.1 171.8,486.8 214.9,478.8 258.0,461.7 301.1,464.8 344.2,474.9 387.3,488.5 430.4,466.1 473.6,480.6 516.7,460.8 559.8,467.0 602.9,485.0 646.0,485.4 689.1,487.6 732.2,485.4 775.3,478.4 818.4,482.4"/>
+<circle class="m2" cx="85.6" cy="529.9" r="5"><title>S0 upstream master (no-op-offload, ub32, cache 2800) (afe77e18): after 4.8k 17.3 t/s, VRAM 6307 MiB</title></circle>
+<circle class="m2" cx="128.7" cy="499.1" r="5"><title>S1 + MoE cache dedup (adishik 65dd939f) (2438cefc): after 4.8k 24.3 t/s, VRAM 6596 MiB</title></circle>
+<circle class="m2" cx="171.8" cy="486.8" r="5"><title>S2 + fused glue ops + FA bias (#32740), same flags (4fb181db): after 4.8k 27.1 t/s, VRAM 6420 MiB</title></circle>
+<circle class="m2" cx="214.9" cy="478.8" r="5"><title>S3 op-offload on (views fix), ub512, cache 3400 (4fb181db): after 4.8k 28.9 t/s, VRAM 7441 MiB</title></circle>
+<circle class="m2" cx="258.0" cy="461.7" r="5"><title>S4 + dedup with CPU share 0.7 (2ecddfadf): after 4.8k 32.8 t/s, VRAM 7534 MiB</title></circle>
+<circle class="m2" cx="301.1" cy="464.8" r="5"><title>S5 preset: ub 1024 (balanced) (1410a556): after 4.8k 32.1 t/s, VRAM 7758 MiB</title></circle>
+<circle class="m2" cx="344.2" cy="474.9" r="5"><title>S6 + expert prefetch (opt-in), cache 2600 (d2514c6ea): after 4.8k 29.8 t/s, VRAM 7753 MiB</title></circle>
+<circle class="m2" cx="387.3" cy="488.5" r="5"><title>S7 prefetch + ub 2048, cache 2000 (max prefill) (d25dc474): after 4.8k 26.7 t/s, VRAM 7620 MiB</title></circle>
+<circle class="m2" cx="430.4" cy="466.1" r="5"><title>S8 single-slot prefetch, cache 3400 (new balanced) (dee6c0f51): after 4.8k 31.8 t/s, VRAM 7692 MiB</title></circle>
+<circle class="m2" cx="473.6" cy="480.6" r="5"><title>S9 prefetch ub 2048, cache 2400 (max prefill, light desktop) (aff1063b1): after 4.8k 28.5 t/s, VRAM 7504 MiB</title></circle>
+<circle class="m2" cx="516.7" cy="460.8" r="5"><title>S10 balanced + q4_0 KV, cache 3650 (dafda2ad7): after 4.8k 33 t/s, VRAM 7604 MiB</title></circle>
+<circle class="m2" cx="559.8" cy="467.0" r="5"><title>S11 2-slot prefetch + q4_0 KV, cache 3200 (355ff0d1d): after 4.8k 31.6 t/s, VRAM 7502 MiB</title></circle>
+<circle class="m2" cx="602.9" cy="485.0" r="5"><title>S12 max prefill + q4_0 KV, ub 2048, cache 2650 (6b6115871): after 4.8k 27.5 t/s, VRAM 7382 MiB</title></circle>
+<circle class="m2" cx="646.0" cy="485.4" r="5"><title>B10 bench.py baseline S10 (median of 6, 3 runs) (bench.py): after 4.8k 27.4 t/s, VRAM 7526 MiB</title></circle>
+<circle class="m2" cx="689.1" cy="487.6" r="5"><title>B11 bench.py baseline S11 (bench.py): after 4.8k 26.9 t/s, VRAM 7424 MiB</title></circle>
+<circle class="m2" cx="732.2" cy="485.4" r="5"><title>B12 bench.py baseline S12 (bench.py): after 4.8k 27.4 t/s, VRAM 7301 MiB</title></circle>
+<circle class="m2" cx="775.3" cy="478.4" r="5"><title>E4 + background cache fill (S13 = S10 + E4) (d0c94745): after 4.8k 29 t/s, VRAM 7526 MiB</title></circle>
+<circle class="m2" cx="818.4" cy="482.4" r="5"><title>E2 + prefetch skips cached experts (S14 = S11 + E2) (1bf03dedd): after 4.8k 28.1 t/s, VRAM 7424 MiB</title></circle>
+<text class="val" x="828.4" y="496.4">28.1</text>
+<text class="tick" x="840" y="376" text-anchor="end">after 1k: 18 -> 35.9 (2.0x)</text>
+<text class="ptitle" x="85.6" y="622" text-anchor="middle" style="font-size:12px">S0</text>
+<text class="tick" x="85.6" y="636" text-anchor="middle">upstream</text>
+<text class="tick" x="85.6" y="649" text-anchor="middle">master</text>
+<text class="tick" x="85.6" y="662" text-anchor="middle">(no-op-</text>
+<text class="ptitle" x="128.7" y="622" text-anchor="middle" style="font-size:12px">S1</text>
+<text class="tick" x="128.7" y="636" text-anchor="middle">+ MoE</text>
+<text class="tick" x="128.7" y="649" text-anchor="middle">cache</text>
+<text class="tick" x="128.7" y="662" text-anchor="middle">dedup</text>
+<text class="ptitle" x="171.8" y="622" text-anchor="middle" style="font-size:12px">S2</text>
+<text class="tick" x="171.8" y="636" text-anchor="middle">+ fused</text>
+<text class="tick" x="171.8" y="649" text-anchor="middle">glue ops +</text>
+<text class="tick" x="171.8" y="662" text-anchor="middle">FA bias</text>
+<text class="ptitle" x="214.9" y="622" text-anchor="middle" style="font-size:12px">S3</text>
+<text class="tick" x="214.9" y="636" text-anchor="middle">op-offload</text>
+<text class="tick" x="214.9" y="649" text-anchor="middle">on (views</text>
+<text class="tick" x="214.9" y="662" text-anchor="middle">fix),</text>
+<text class="ptitle" x="258.0" y="622" text-anchor="middle" style="font-size:12px">S4</text>
+<text class="tick" x="258.0" y="636" text-anchor="middle">+ dedup</text>
+<text class="tick" x="258.0" y="649" text-anchor="middle">with CPU</text>
+<text class="tick" x="258.0" y="662" text-anchor="middle">share 0.7</text>
+<text class="ptitle" x="301.1" y="622" text-anchor="middle" style="font-size:12px">S5</text>
+<text class="tick" x="301.1" y="636" text-anchor="middle">preset: ub</text>
+<text class="tick" x="301.1" y="649" text-anchor="middle">1024</text>
+<text class="tick" x="301.1" y="662" text-anchor="middle">(balanced)</text>
+<text class="ptitle" x="344.2" y="622" text-anchor="middle" style="font-size:12px">S6</text>
+<text class="tick" x="344.2" y="636" text-anchor="middle">+ expert</text>
+<text class="tick" x="344.2" y="649" text-anchor="middle">prefetch</text>
+<text class="tick" x="344.2" y="662" text-anchor="middle">(opt-in),</text>
+<text class="ptitle" x="387.3" y="622" text-anchor="middle" style="font-size:12px">S7</text>
+<text class="tick" x="387.3" y="636" text-anchor="middle">prefetch +</text>
+<text class="tick" x="387.3" y="649" text-anchor="middle">ub 2048,</text>
+<text class="tick" x="387.3" y="662" text-anchor="middle">cache 2000</text>
+<text class="ptitle" x="430.4" y="622" text-anchor="middle" style="font-size:12px">S8</text>
+<text class="tick" x="430.4" y="636" text-anchor="middle">single-</text>
+<text class="tick" x="430.4" y="649" text-anchor="middle">slot</text>
+<text class="tick" x="430.4" y="662" text-anchor="middle">prefetch,</text>
+<text class="ptitle" x="473.6" y="622" text-anchor="middle" style="font-size:12px">S9</text>
+<text class="tick" x="473.6" y="636" text-anchor="middle">prefetch</text>
+<text class="tick" x="473.6" y="649" text-anchor="middle">ub 2048,</text>
+<text class="tick" x="473.6" y="662" text-anchor="middle">cache 2400</text>
+<text class="ptitle" x="516.7" y="622" text-anchor="middle" style="font-size:12px">S10</text>
+<text class="tick" x="516.7" y="636" text-anchor="middle">balanced +</text>
+<text class="tick" x="516.7" y="649" text-anchor="middle">q4_0 KV,</text>
+<text class="tick" x="516.7" y="662" text-anchor="middle">cache 3650</text>
+<text class="ptitle" x="559.8" y="622" text-anchor="middle" style="font-size:12px">S11</text>
+<text class="tick" x="559.8" y="636" text-anchor="middle">2-slot</text>
+<text class="tick" x="559.8" y="649" text-anchor="middle">prefetch +</text>
+<text class="tick" x="559.8" y="662" text-anchor="middle">q4_0 KV,</text>
+<text class="ptitle" x="602.9" y="622" text-anchor="middle" style="font-size:12px">S12</text>
+<text class="tick" x="602.9" y="636" text-anchor="middle">max</text>
+<text class="tick" x="602.9" y="649" text-anchor="middle">prefill +</text>
+<text class="tick" x="602.9" y="662" text-anchor="middle">q4_0 KV,</text>
+<text class="ptitle" x="646.0" y="622" text-anchor="middle" style="font-size:12px">B10</text>
+<text class="tick" x="646.0" y="636" text-anchor="middle">bench.py</text>
+<text class="tick" x="646.0" y="649" text-anchor="middle">baseline</text>
+<text class="tick" x="646.0" y="662" text-anchor="middle">S10</text>
+<text class="ptitle" x="689.1" y="622" text-anchor="middle" style="font-size:12px">B11</text>
+<text class="tick" x="689.1" y="636" text-anchor="middle">bench.py</text>
+<text class="tick" x="689.1" y="649" text-anchor="middle">baseline</text>
+<text class="tick" x="689.1" y="662" text-anchor="middle">S11</text>
+<text class="ptitle" x="732.2" y="622" text-anchor="middle" style="font-size:12px">B12</text>
+<text class="tick" x="732.2" y="636" text-anchor="middle">bench.py</text>
+<text class="tick" x="732.2" y="649" text-anchor="middle">baseline</text>
+<text class="tick" x="732.2" y="662" text-anchor="middle">S12</text>
+<text class="ptitle" x="775.3" y="622" text-anchor="middle" style="font-size:12px">E4</text>
+<text class="tick" x="775.3" y="636" text-anchor="middle">+</text>
+<text class="tick" x="775.3" y="649" text-anchor="middle">background</text>
+<text class="tick" x="775.3" y="662" text-anchor="middle">cache fill</text>
+<text class="ptitle" x="818.4" y="622" text-anchor="middle" style="font-size:12px">E2</text>
+<text class="tick" x="818.4" y="636" text-anchor="middle">+ prefetch</text>
+<text class="tick" x="818.4" y="649" text-anchor="middle">skips</text>
+<text class="tick" x="818.4" y="662" text-anchor="middle">cached</text>
 <line class="l1" x1="64" x2="86" y1="64" y2="64"/>
 <circle class="m1" cx="75" cy="64" r="4"/>
 <text x="92" y="68">1k-token prompt</text>
