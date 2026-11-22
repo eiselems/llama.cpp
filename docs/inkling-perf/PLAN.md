@@ -37,3 +37,26 @@ prompt, 128 tokens, single sample). Rows from the new harness are marked "(bench
 Noise: the three S10 runs spread 1.6 % on decode and 0.5 % on prefill, well inside the 3 % acceptance rule.
 The S10 > S11 > S12 decode order and the S12 > S11 > S10 prefill order from the old harness hold.
 (The runs were flagged ON_BATTERY by mistake: the wireless mouse battery reports online=0; fixed in bench.py.)
+
+### Step 1: where decode time goes (nsys, 2026-11-22 11:45)
+
+S10, one 256-token decode request after a short prompt, captured with `nsys launch/start/stop` (request window
+only); second capture with `--cuda-graph-trace=node` for per-kernel times. 34.5 t/s under the profiler.
+
+| per token | measured | serial ceiling (THEORY.md) |
+|---|---:|---:|
+| GPU kernels | 16.4-17.1 ms | ~9.3 ms (dense + LM head + cache hits at 405 GB/s) |
+| - dense GEMV (Q8_0 `mul_mat_vec_q<8>`, ~290 calls) | 5.6 ms | 4.4 ms -> ~79 % of bandwidth |
+| - expert GEMV from the cache (NVFP4 `mul_mat_vec_q<40>`, ~87 calls) | 4.2 ms | 3.7 ms -> ~86 % |
+| - ~2,970 small kernels (norms, attention, glue, activation quantize, ...) | ~7.3 ms | ~0 |
+| expert uploads (H2D, 276 copies, 86 MB) | 3.6 ms | 3.5 ms |
+| GPU idle (CPU computes ~70 % of the misses, host plans, syncs) | 8.8 ms | ~4.4 ms of CPU expert work |
+| total | 29.0 ms | 17.1 ms |
+
+Host: 668 `cudaStreamSynchronize` per token (~14 per layer application), 96 graph launches per token (the
+decode graph is split into ~96 pieces by the CPU/GPU handovers), 3,348 kernels per token.
+
+Where the ~11 ms above the serial ceiling go: ~7 ms is per-kernel overhead of ~3,000 small kernels, ~4 ms is GPU
+idle time beyond the CPU expert work (handovers, syncs). The two big GEMV groups are already at 79-86 % of
+bandwidth. Ranked decode levers from this: (a) fewer CPU/GPU handovers and syncs per layer, (b) fewer, larger
+kernels (fusion), (c) GEMV efficiency.
