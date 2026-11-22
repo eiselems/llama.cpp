@@ -23,3 +23,4 @@
 | E7 | + MMA attention bias (S17 = S15 + E7) | `a39686409` | 7301 | 845 | 996 | 33.6 | 26.3 |
 | E8 | + bias index from positions (S18 = S17 + E8) | `58797ab4f` | 7022 | 861 | 1057 | 33.4 | 24.9 |
 | Q9 | IQ4_NL quant (S19 = S18 on IQ4_NL) | `db736005` | 7424 | 873 | 1073 | 35.7 | 26.6 |
+| T10 | S19 cache 2650 -> 2900 (IQ4_NL frees VRAM) | `4b939d81` | 7670 | 890 | 1080 | 36.7 | 28.7 |

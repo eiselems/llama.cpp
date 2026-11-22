@@ -43,8 +43,8 @@ start)
         S16) env=(LLAMA_EXPERT_PREFETCH=3 LLAMA_MOE_CACHE_ASYNC_FILL=1); flags=(-ub 512 --moe-cache-mib 3950) ;;   # max decode: S13 at -ub 512, bigger cache, half the prefill
         S17) env=(LLAMA_EXPERT_PREFETCH=1 LLAMA_EXPERT_PREFETCH_SKIP=1 GGML_CUDA_FATTN_BIAS_MMA=1); flags=(-ub 2048 --moe-cache-mib 2650) ;;  # S15 + MMA bias
         S18) env=(LLAMA_EXPERT_PREFETCH=1 LLAMA_EXPERT_PREFETCH_SKIP=1 GGML_CUDA_FATTN_BIAS_MMA=1 LLAMA_ATTN_BIAS_POSITIONS=1); flags=(-ub 2048 --moe-cache-mib 2650) ;;  # S17 + bias from positions
-        S19) MODEL=$IQ4NL; env=(LLAMA_EXPERT_PREFETCH=1 LLAMA_EXPERT_PREFETCH_SKIP=1 GGML_CUDA_FATTN_BIAS_MMA=1 LLAMA_ATTN_BIAS_POSITIONS=1); flags=(-ub 2048 --moe-cache-mib 2650) ;;  # S18 on IQ4_NL
-        S20) MODEL=$IQ4NL; env=(LLAMA_EXPERT_PREFETCH=3 LLAMA_MOE_CACHE_ASYNC_FILL=1); flags=(-ub 512 --moe-cache-mib 3950) ;;   # S16 on IQ4_NL
+        S19) MODEL=$IQ4NL; env=(LLAMA_EXPERT_PREFETCH=1 LLAMA_EXPERT_PREFETCH_SKIP=1 GGML_CUDA_FATTN_BIAS_MMA=1 LLAMA_ATTN_BIAS_POSITIONS=1); flags=(-ub 2048 --moe-cache-mib 2900) ;;  # S18 on IQ4_NL, cache +250 (T10)
+        S20) MODEL=$IQ4NL; env=(LLAMA_EXPERT_PREFETCH=3 LLAMA_MOE_CACHE_ASYNC_FILL=1); flags=(-ub 512 --moe-cache-mib 4150) ;;   # S16 on IQ4_NL, cache +200 (T10)
         *)   echo "unknown preset $preset" >&2; exit 1 ;;
     esac
     # extra args after the preset override the preset (llama.cpp: the last flag wins); EXTRA_ENV adds env vars
