@@ -60,6 +60,7 @@ struct moe_cache_lru {
     uint32_t seen_gen = 0;
     std::vector<int32_t> uniq;  // the distinct selected experts
     std::vector<int32_t> misses;
+    std::vector<int32_t> skipped;
     std::vector<uint64_t> token_zero; // [n_tokens] zero slots used by each token
 
     void init(int32_t n_layer, int32_t n_expert, int32_t n_slots) {
@@ -202,9 +203,12 @@ struct moe_cache_lru {
     // returns false if the ids select more distinct experts than there are slots
     // il_app is the layer application of the lookup, its keys are those of il = key_layer_of[il_app]
     // only the application il == il_app advances the clock, so a shared layer ages once per token like the others
+    // skip_w (one token, or nullptr): router weights of ids; a miss whose weight is below skip_thr of the sum of the weights
+    // is skipped: it reads a zero slot and is not computed on the CPU, so it adds nothing (LLAMA_MOE_CACHE_SKIP)
     template <typename F>
     bool plan(int32_t il_app, const int32_t * ids, size_t n_ids, int64_t n_tokens, int32_t n_used, int32_t n_zero, F && n_cpu,
-            std::vector<fill> & fills, std::vector<fill> & cpu, size_t & n_hit) {
+            std::vector<fill> & fills, std::vector<fill> & cpu, size_t & n_hit, const float * skip_w = nullptr, float skip_thr = 0.0f,
+            size_t * n_skip = nullptr) {
         const int32_t il = key_layer_of[il_app];
         fills.clear();
         cpu.clear();
@@ -239,6 +243,30 @@ struct moe_cache_lru {
             } else {
                 misses.push_back(e);
             }
+        }
+
+        // one token: skip the misses with a small router weight, each reads its own zero slot after the CPU ones
+        skipped.clear();
+        if (skip_w != nullptr && n_tokens == 1 && n_zero > 0) {
+            float sum = 0.0f;
+            for (int32_t k = 0; k < n_used; ++k) {
+                sum += skip_w[k];
+            }
+            size_t keep = 0;
+            for (int32_t e : misses) {
+                float w = 0.0f;
+                for (int32_t k = 0; k < n_used; ++k) {
+                    if (ids[k] == e) {
+                        w = skip_w[k];
+                    }
+                }
+                if (sum > 0.0f && w < skip_thr*sum) {
+                    skipped.push_back(e);
+                } else {
+                    misses[keep++] = e;
+                }
+            }
+            misses.resize(keep);
         }
 
         // the misses with the lowest CRF are left to the CPU, a miss that keeps being used gains CRF and enters the cache
@@ -283,6 +311,24 @@ struct moe_cache_lru {
                 i++;
             }
             misses.erase(misses.begin(), misses.begin() + n_keep);
+        }
+
+        // the skipped misses: zero slots after the ones of the CPU misses (one token: at most n_used misses in all)
+        if (!skipped.empty()) {
+            int32_t z = 0;
+            for (int32_t e : skipped) {
+                while (z < n_zero && std::any_of(cpu.begin(), cpu.end(), [&](const fill & f) { return f.slot == n_slots + z; })) {
+                    z++;
+                }
+                if (z >= n_zero) {
+                    misses.push_back(e); // no zero slot left: a normal miss
+                    continue;
+                }
+                slots[e] = n_slots + z++;
+            }
+            if (n_skip != nullptr) {
+                *n_skip += skipped.size();
+            }
         }
 
         // fill the misses in expert order: victim() takes unused slots, and slots filled by one plan(), in list order,
@@ -436,6 +482,11 @@ struct llama_moe_cache::impl {
     // router on this application's router input, see build_moe_ffn) are uploaded in the background; a background fill
     // becomes a hit only once its upload is done (event query), it never waits
     int32_t predict_max = 0;
+    // LLAMA_MOE_CACHE_SKIP=f: in decode, misses with a router weight below f of the token's weight sum are not computed
+    float skip_thr = 0.0f;
+    std::vector<ggml_tensor *> w_of;   // [n_layer] router weights of the selected experts, nullptr if none
+    std::vector<float> w_ids;
+    size_t n_skipped = 0;
     std::vector<ggml_tensor *> pred_of;   // [n_layer] predicted experts of the next application, nullptr if none
     std::vector<int32_t> pred_ids;
     std::vector<moe_cache_lru::fill> pred_fills;
@@ -499,6 +550,10 @@ struct llama_moe_cache::impl {
             predict_max = atoi(v);
         }
         pred_of.assign(model.layers.size(), nullptr);
+        w_of.assign(model.layers.size(), nullptr);
+        if (const char * v = getenv("LLAMA_MOE_CACHE_SKIP"); v != nullptr && atof(v) > 0.0) {
+            skip_thr = (float) atof(v);
+        }
         if (const char * v = getenv("LLAMA_MOE_CACHE_DEDUP"); v != nullptr && *v != '\0') {
             dedup = std::clamp(atoi(v), 0, 2);
         }
@@ -814,6 +869,9 @@ struct llama_moe_cache::impl {
         if (n_async_fill > 0) {
             LLAMA_LOG_INFO("llama_moe_cache: %zu experts filled in the background\n", n_async_fill);
         }
+        if (n_skipped > 0) {
+            LLAMA_LOG_INFO("llama_moe_cache: %zu missed experts skipped (router weight < %.3f of the sum)\n", n_skipped, skip_thr);
+        }
         if (n_pred_fill > 0) {
             LLAMA_LOG_INFO("llama_moe_cache: %zu predicted experts uploaded: %zu entered the cache, %zu were cached meanwhile, %zu evicted before done\n",
                     n_pred_fill, n_pred_commit, n_pred_dup, n_pred_lost);
@@ -976,6 +1034,14 @@ struct llama_moe_cache::impl {
         } else {
             pred_ids.clear();
         }
+        const ggml_tensor * wsel = skip_thr > 0.0f && sel->src[0]->ne[1] == 1 ? w_of[il] : nullptr;
+        if (wsel != nullptr && wsel->buffer != nullptr && !ggml_backend_buffer_is_host(wsel->buffer) && wsel->type == GGML_TYPE_F32 &&
+                ggml_is_contiguous(wsel) && ggml_nelements(wsel) == ggml_nelements(sel)) {
+            w_ids.resize(ggml_nelements(wsel));
+            ggml_backend_tensor_get_async(backend, wsel, w_ids.data(), 0, ggml_nbytes(wsel));
+        } else {
+            w_ids.clear();
+        }
         ggml_backend_synchronize(backend);
 
         // with prediction: the background fills whose uploads are done enter the cache, the others stay pending, no wait
@@ -1013,7 +1079,8 @@ struct llama_moe_cache::impl {
             return (size_t) (acc >> 16);
         };
         size_t n_hit = 0;
-        if (!g.lru.plan(il, ids.data(), ids.size(), sel->src[0]->ne[1], n_used, n_zero, n_cpu, fills, cpu, n_hit)) {
+        if (!g.lru.plan(il, ids.data(), ids.size(), sel->src[0]->ne[1], n_used, n_zero, n_cpu, fills, cpu, n_hit,
+                    w_ids.empty() ? nullptr : w_ids.data(), skip_thr, &n_skipped)) {
             GGML_ABORT("the MoE cache is too small for the experts selected in layer %d", il);
         }
 
@@ -1308,6 +1375,7 @@ llama_moe_cache_lookup llama_moe_cache::build_lookup(const llm_graph_context & g
 
     if ((size_t) il < pimpl->pred_of.size()) {
         pimpl->pred_of[il] = layer.pred_next;
+        pimpl->w_of[il]    = layer.weights;
     }
 
     ggml_tensor * cpu_map  = cpu_part ? pimpl->get_cpu_map(il, selected_experts->ne[1]) : nullptr;
