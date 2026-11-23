@@ -3522,6 +3522,41 @@ static void ggml_compute_forward_swiglu(
     }
 }
 
+// ggml_compute_forward_situ: the same float operations as the scale/tanh/sigmoid/mul ops it replaces, so the same results
+
+static void ggml_compute_forward_situ(
+        const ggml_compute_params * params,
+        ggml_tensor * dst) {
+    const ggml_tensor * src0 = dst->src[0];
+    const ggml_tensor * src1 = dst->src[1];
+    GGML_ASSERT(src1 && src0->type == GGML_TYPE_F32 && src1->type == GGML_TYPE_F32 && dst->type == GGML_TYPE_F32);
+    GGML_ASSERT(ggml_is_contiguous_1(src0) && ggml_is_contiguous_1(src1) && ggml_is_contiguous_1(dst));
+
+    const int nc = src0->ne[0];
+    const int nr = ggml_nrows(src0);
+    GGML_ASSERT(dst->ne[0] == nc && ggml_nrows(dst) == nr);
+
+    const float beta = ggml_get_op_params_f32(dst, 2);
+    const float lb   = ggml_get_op_params_f32(dst, 3);
+    const float inv_beta = 1.0f/beta;
+    const float inv_lb   = lb > 0.0f ? 1.0f/lb : 0.0f;
+
+    const int dr  = (nr + params->nth - 1)/params->nth;
+    const int ir0 = dr*params->ith;
+    const int ir1 = MIN(ir0 + dr, nr);
+
+    for (int i1 = ir0; i1 < ir1; i1++) {
+        const float * g = (const float *) ((const char *) src0->data + i1*src0->nb[1]);
+        const float * u = (const float *) ((const char *) src1->data + i1*src1->nb[1]);
+        float       * y = (float *) ((char *) dst->data + i1*dst->nb[1]);
+        for (int k = 0; k < nc; k++) {
+            const float act = (tanhf(g[k]*inv_beta)*beta)*(1.f/(1.f + expf(-g[k])));
+            const float up  = lb > 0.0f ? tanhf(u[k]*inv_lb)*lb : u[k];
+            y[k] = act*up;
+        }
+    }
+}
+
 // ggml_compute_forward_swiglu_oai
 
 static void ggml_compute_forward_swiglu_oai_f32(
@@ -10635,6 +10670,10 @@ void ggml_compute_forward_glu(
         case GGML_GLU_OP_SWIGLU_OAI:
             {
                 ggml_compute_forward_swiglu_oai(params, dst);
+            } break;
+        case GGML_GLU_OP_SITU:
+            {
+                ggml_compute_forward_situ(params, dst);
             } break;
         case GGML_GLU_OP_GEGLU_ERF:
             {

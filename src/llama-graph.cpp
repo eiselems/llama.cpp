@@ -2676,6 +2676,14 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
                     const float beta = hparams.situ_beta;
                     const float lb   = hparams.situ_linear_beta;
 
+                    // host experts in small batches run on the CPU: one fused op instead of nine (one barrier each)
+                    static const bool situ_fused = [] { const char * v = getenv("LLAMA_SITU_FUSED"); return !v || atoi(v) != 0; }();
+                    if (situ_fused && !cached && n_tokens < 32 && down_exps->buffer && ggml_backend_buffer_is_host(down_exps->buffer)) {
+                        cur = ggml_situ(ctx0, cur, up, beta, lb);
+                        cb(cur, "ffn_moe_situ", il);
+                        break;
+                    }
+
                     ggml_tensor * act = ggml_scale(ctx0, ggml_tanh(ctx0, ggml_scale(ctx0, cur, 1.0f/beta)), beta);
                     act = ggml_mul(ctx0, act, ggml_sigmoid(ctx0, cur));
                     if (lb > 0.0f) {
