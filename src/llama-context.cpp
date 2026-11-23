@@ -3206,7 +3206,7 @@ bool llama_context::sched_copy_experts(ggml_backend_t backend, const ggml_tensor
     auto * lctx = static_cast<llama_context *>(user_data);
 
     // the slot maps of the MoE cache
-    if (lctx->moe_cache && lctx->moe_cache->copy(backend, src, dst, graph)) {
+    if (lctx->moe_cache && lctx->moe_cache->copy(backend, src, dst, graph, lctx->sched.get())) {
         return true;
     }
 

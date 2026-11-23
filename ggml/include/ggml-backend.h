@@ -391,6 +391,9 @@ extern "C" {
 
     // Set a callback to be called when the inputs weights of a split are being copied
     GGML_API void                 ggml_backend_sched_set_copy_callback(ggml_backend_sched_t sched, ggml_backend_sched_copy_callback callback, void * user_data);
+    // in a copy callback: the host copy of tensor (or a contiguous view of it) that the scheduler read for the next split, after
+    // waiting for the read; NULL if it was not read
+    GGML_API const void *         ggml_backend_sched_get_prefetched(ggml_backend_sched_t sched, const struct ggml_tensor * tensor);
 
     // Set a callback to be called when the compute buffers of a graph are being reallocated
     GGML_API void                 ggml_backend_sched_set_realloc_callback(ggml_backend_sched_t sched, ggml_backend_sched_realloc_callback callback, void * user_data);
