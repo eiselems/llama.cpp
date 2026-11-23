@@ -527,8 +527,33 @@ template<int ncols1, int nwarps, int nbatch_fa, bool use_cp_async, bool oob_chec
 static __device__ __forceinline__ void flash_attn_ext_f16_load_mask(
         const half * const __restrict__ mask_h, half * const __restrict__ tile_mask,
         const int stride_mask, const int k_VKQ_0, const int i_sup, const int j0, const uint3 ne01,
-        const int32_t * const __restrict__ indices) {
+        const int32_t * const __restrict__ indices, const fattn_indexed_bias & bias, const int sequence) {
     constexpr int warp_size = ggml_cuda_get_physical_warp_size();
+    if constexpr (!use_sparse) {
+        if (bias.mask_from_positions) {
+            // same tile layout as the loads below: row j_sram at j_sram*(nbatch_fa + 8) halves
+#pragma unroll
+            for (int j1 = 0; j1 < ncols1; j1 += nwarps) {
+                const int j_sram = j1 + threadIdx.y;
+                const int j_vram = fastmodulo(j0 + j_sram, ne01);
+
+                if (j1 + nwarps > ncols1 && j_sram >= ncols1) {
+                    break;
+                }
+
+#pragma unroll
+                for (int i0 = 0; i0 < nbatch_fa; i0 += warp_size) {
+                    const int i = i0 + threadIdx.x;
+                    if (nbatch_fa % warp_size != 0 && i >= nbatch_fa) {
+                        break;
+                    }
+                    const float m = oob_check && i >= i_sup ? 0.0f : fattn_mask_from_positions(bias, sequence, j_vram, k_VKQ_0 + i);
+                    tile_mask[j_sram*(nbatch_fa + 8) + i] = __float2half(m);
+                }
+            }
+            return;
+        }
+    }
     if constexpr (use_cp_async) {
         static_assert(nbatch_fa <= 8*warp_size && nbatch_fa % 8 == 0, "bad nbatch_fa");
         static_assert(!oob_check, "OOB check incompatible with cp_async");
@@ -617,6 +642,17 @@ struct fattn_mma_bias_ctx {
     int head;
 };
 
+// KV chunks: KQ max and rowsum of output column jc of the tile (jc = j*ncols2 + c), as the merge of the chunks needs them
+template <int ncols1, int ncols2>
+static __device__ __forceinline__ void flash_attn_ext_f16_chunk_meta(
+        const fattn_mma_bias_ctx & bctx, const int jc, const float2 KQ_cmr, const int jt, const int zt_gqa, const uint3 ne01, const int ne02, const int gqa_ratio) {
+    const int j = jt*ncols1 + jc/ncols2;
+    const int c = jc % ncols2;
+    if (j < int(ne01.z) && zt_gqa*ncols2 + c < gqa_ratio) {
+        bctx.bias.chunk_meta[(int64_t(bctx.sequence)*ne01.z + j)*ne02 + bctx.head + c] = KQ_cmr;
+    }
+}
+
 // m: the mask value at query column jq of the sequence, mask column k; as in the tile kernel: half(m + table[...])
 static __device__ __forceinline__ float flash_attn_ext_f16_bias(
         const fattn_mma_bias_ctx & bctx, float m, const int jq, const int k, const uint3 ne01, const int ne02, const int stride_mask) {
@@ -704,7 +740,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_iter(
         constexpr bool use_cp_async = nstages == 1 && !use_sparse;
         if (ncols2 > 1 || mask_h) {
             flash_attn_ext_f16_load_mask<ncols1, nwarps, nbatch_fa, use_cp_async, oob_check, use_sparse>
-                (mask_h, tile_mask, stride_mask, k_VKQ_0, k_VKQ_sup, jt*ncols1, ne01, indices);
+                (mask_h, tile_mask, stride_mask, k_VKQ_0, k_VKQ_sup, jt*ncols1, ne01, indices, bctx.bias, bctx.sequence);
         }
     }
 
@@ -1064,7 +1100,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_iter(
         if (!last_iter) {
             if (ncols2 > 1 || mask_h) {
                 flash_attn_ext_f16_load_mask<ncols1, nwarps, nbatch_fa, use_cp_async, oob_check, use_sparse>
-                    (mask_h, tile_mask, stride_mask, kb0_next*nbatch_fa, k_VKQ_sup, jt*ncols1, ne01, nullptr);
+                    (mask_h, tile_mask, stride_mask, kb0_next*nbatch_fa, k_VKQ_sup, jt*ncols1, ne01, nullptr, bctx.bias, bctx.sequence);
             }
             flash_attn_ext_f16_load_tile<stride_tile_K, nwarps, nbatch_fa, use_cp_async, oob_check, use_sparse>
                 (K_h2, tile_K, min(nbatch_K2, DKQ/2), stride_K, kb0_next*nbatch_fa, k_VKQ_sup, indices);
@@ -1491,7 +1527,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
         constexpr int  k_VKQ_sup    = nbatch_fa;
         if (ncols2 > 1 || mask_h) {
             flash_attn_ext_f16_load_mask<ncols1, nwarps, nbatch_fa, use_cp_async, oob_check, use_sparse>
-                (mask_h, tile_mask, stride_mask, kb0*nbatch_fa, k_VKQ_sup, jt*ncols1, ne01, nullptr);
+                (mask_h, tile_mask, stride_mask, kb0*nbatch_fa, k_VKQ_sup, jt*ncols1, ne01, nullptr, bctx.bias, bctx.sequence);
         }
         flash_attn_ext_f16_load_tile<stride_tile_K, nwarps, nbatch_fa, use_cp_async, oob_check, use_sparse>
             (K_h2, tile_K, min(nbatch_K2, DKQ/2), stride_K, kb0*nbatch_fa, k_VKQ_sup, indices);
@@ -1706,6 +1742,9 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
                 float2 * dstk_fixup_meta = dstk_fixup + (gridDim.x + blockIdx.x)*ncols;
                 dstk_fixup_meta[jc_cwm] = KQ_cmr;
             }
+            if (!needs_fixup && !is_fixup && bctx.bias.chunk_meta && threadIdx.x < T_B_KQ::I) {
+                flash_attn_ext_f16_chunk_meta<ncols1, ncols2>(bctx, jc_cwm, KQ_cmr, jt, zt_gqa, ne01, ne02, gqa_ratio);
+            }
         }
     } else {
         // jc_cwm = jc combine write meta
@@ -1744,6 +1783,9 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
             if (is_fixup && thread_should_write) {
                 float2 * dstk_fixup_meta = dstk_fixup + (gridDim.x + blockIdx.x)*ncols;
                 dstk_fixup_meta[jc_cwm] = KQ_cmr;
+            }
+            if (!needs_fixup && !is_fixup && bctx.bias.chunk_meta && thread_should_write) {
+                flash_attn_ext_f16_chunk_meta<ncols1, ncols2>(bctx, jc_cwm, KQ_cmr, jt, zt_gqa, ne01, ne02, gqa_ratio);
             }
         }
     }
@@ -1817,6 +1859,9 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
             if (is_fixup && (cols_per_warp == warp_size || threadIdx.x < cols_per_warp)) {
                 float2 * dstk_fixup_meta = dstk_fixup + (gridDim.x + blockIdx.x)*ncols;
                 dstk_fixup_meta[(threadIdx.y/np)*cols_per_warp + threadIdx.x] = make_float2(KQ_cmn, KQ_crs);
+            }
+            if (!needs_fixup && !is_fixup && bctx.bias.chunk_meta && (cols_per_warp == warp_size || threadIdx.x < cols_per_warp)) {
+                flash_attn_ext_f16_chunk_meta<ncols1, ncols2>(bctx, (threadIdx.y/np)*cols_per_warp + threadIdx.x, make_float2(KQ_cmn, KQ_crs), jt, zt_gqa, ne01, ne02, gqa_ratio);
             }
         }
     }
