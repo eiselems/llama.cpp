@@ -29,3 +29,4 @@ S25	c0fe97986	+ host experts on huge pages (THP)	7782	855.9	1040.8	35.81	26.12	S
 S21c	edc5907e	S21 as before 2026-11-23 (cache 2336)	7782	630.6	848.1	33.65	18.24	S21 + LLAMA_MOE_CACHE_HALF_LIFE=128 --moe-cache-mib 2336, -c 131072, median of 4 runs	128k
 S22	edc5907e	+ auto cache, half-life 64, mask from positions, K/V chunks	7782	654.6	860.6	36.45	18.38	LLAMA_ATTN_MASK_POSITIONS=1 GGML_CUDA_FATTN_KV_CHUNK=32768 --moe-cache-mib auto (3028 MiB), S21 flags	128k
 S23	edc5907e	S22 + expert prefetch (fits again)	7782	833.8	1018.6	32.5	18.78	S22 + LLAMA_EXPERT_PREFETCH=1 LLAMA_EXPERT_PREFETCH_SKIP=1	128k
+S26	41a7235a2	+ async CPU result upload, prefetched expert ids (exact)	7772	895.1	1086.4	38.79	29.26	S25 (defaults on), mean of 2 runs interleaved with 3 off runs (37.85 t/s)	32k
