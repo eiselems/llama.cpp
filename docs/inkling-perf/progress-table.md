@@ -24,3 +24,6 @@
 | E8 | + bias index from positions (S18 = S17 + E8) | `58797ab4f` | 7022 | 861 | 1057 | 33.4 | 24.9 |
 | Q9 | IQ4_NL quant (S19 = S18 on IQ4_NL) | `db736005` | 7424 | 873 | 1073 | 35.7 | 26.6 |
 | T10 | S19 cache 2650 -> 2900 (IQ4_NL frees VRAM) | `4b939d81` | 7670 | 890 | 1080 | 36.7 | 28.7 |
+| S21c | 128k ctx control: S21 as before 2026-11-23 (cache 2336; tg5k = decode after 94k) | `edc5907e` | 7782 | 630.6 | 848.1 | 33.65 | 18.24 |
+| S22 | 128k: + auto cache, half-life 64, mask from positions, K/V chunks | `edc5907e` | 7782 | 654.6 | 860.6 | 36.45 | 18.38 |
+| S23 | 128k: S22 + expert prefetch (fits again) | `edc5907e` | 7782 | 833.8 | 1018.6 | 32.5 | 18.78 |

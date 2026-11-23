@@ -247,3 +247,31 @@ Smoke = 2 cold 4,076-token prompts + 128 tokens (card sampling), then a short pr
 
 B is the best balance -> preset S21. Single smoke runs at temperature 1, not a validated A/B; a prompt that
 actually fills 128k has not been run yet.
+
+## 2026-11-23: memory at 128k context (#2 auto cache, #3 half-life, #4 mask from positions, #5 K/V chunks)
+
+Ideas from Strata 0.2.20 (Niko1221/Strata): its fixed-size prefill attention scratch and its cache tiers. At 128k and
+-ub 2048 the CUDA compute buffer was 1,753 MiB (32k: 1,137): ~1 GiB grows with the context, the f16 mask [n_kv, n_tokens]
+(512 MiB) and the f16 copies of the q4_0 K/V that the MMA/tile kernels read (512 MiB, fattn-common.cuh).
+
+| # | change | commit | effect |
+|---|---|---|---|
+| 2 | `--moe-cache-mib auto` + `--moe-cache-margin-mib` (default 256): placeholder cache, reserve, eager prefetch staging, then cache = free - margin | 6ddf97d3 | presets no longer depend on the desktop's GPU use; runtime growth after startup ~160 MiB |
+| 3 | CRF half-life from `LLAMA_MOE_CACHE_HALF_LIFE`, default 128 -> 64 | 50bb85c4 | trace replay (scripts/inkling/moe-halflife-sweep.py, 2,134 decode tokens, mirror 68.5 % vs 69.4 % measured hits): 0.4-0.6 % fewer misses; slower decay and class caps (Strata's choice) are worse; the policy is near its optimum |
+| 4 | `LLAMA_ATTN_MASK_POSITIONS=1`: full attention layers of ubatches > 32 tokens get no mask, FA derives it from the bias positions (MMA tile loader, tile kernel, KV_max) | 3d7292d7 | compute buffer -514 MiB at 128k |
+| 5 | `GGML_CUDA_FATTN_KV_CHUNK=N`: f16 K/V copies N cells at a time, per-row max/rowsum from the kernels, online-softmax merge | 3d7292d7, edc5907e | with #4: 1,061 MiB (the floor of the non-attention part for 16k-64k chunks); decode not chunked (it was 18 % slower after 94k; its graph is smaller anyway) |
+
+Tests: test-flash-attn-indexed-bias 76 cases (mask from positions on tile + MMA, q4_0 K/V with 256/512-cell chunks). A greedy
+text diff is not usable here: two runs of the same config diverge after ~14 characters (and bench.document stamps the time).
+
+Final eval (bench.py `--long 120000 --skip-cN`, IQ4_NL, -c 131072, ~790 MiB desktop, ctl / S22 / ctl / S23 / ctl, then
+S22 / ctl / S23 after the decode fix):
+
+| run | c1 decode | prefill 958 / 4,724 / 93,824 | decode after 94k | needles |
+|---|---:|---:|---:|---:|
+| S21c ctl 1-4 | 33.45 / 33.84 / 33.86 / 32.03 | 626-638 / 843-850 / 712-716 | 17.9-19.0 | 3/3 |
+| S22 (auto cache 3,028 MiB) | 36.36 / **36.45** | 644-655 / 860 / **759-760** | 15.0 -> **18.4** (fix) | 3/3 |
+| S23 (+ prefetch) | 32.65 / 32.50 | **834-835 / 1,019-1,021 / 830** | 15.2 -> **18.8** (fix) | 3/3 |
+
+S22: decode +8 %, prefill +2-6 %. S23: prefill +16-32 %, decode -3 %. Launchers: ~/startInkling@130k.sh = S22
+(INKLING_PREFETCH=1 for S23); @64k and @32k get #4/#5 too (no effect at 32k: the cache is not larger than one chunk).
