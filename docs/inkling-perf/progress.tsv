@@ -1,4 +1,4 @@
-step	commit	change	vram_mib	pp1k	pp5k	tg1k	tg5k	args
+step	commit	change	vram_mib	pp1k	pp5k	tg1k	tg5k	args	ctx
 S0	afe77e18	upstream master (no-op-offload, ub32, cache 2800)	6307	57.6	56.4	18	17.3	--fit off -ngl all -cmoe --no-op-offload -b 32 -ub 32 --moe-cache-mib 2800
 S1	2438cefc	+ MoE cache dedup (adishik 65dd939f)	6596	70.7	77.1	24.7	24.3	--fit off -ngl all -cmoe --no-op-offload -b 32 -ub 32 --moe-cache-mib 2800
 S2	4fb181db	+ fused glue ops + FA bias (#32740), same flags	6420	74.1	81.5	27.4	27.1	--fit off -ngl all -cmoe --no-op-offload -b 32 -ub 32 --moe-cache-mib 2800
@@ -23,6 +23,8 @@ E7	a39686409	+ MMA attention bias (S17 = S15 + E7)	7301	845	996	33.6	26.3	LLAMA_
 E8	58797ab4f	+ bias index from positions (S18 = S17 + E8)	7022	861	1057	33.4	24.9	S17 env + LLAMA_ATTN_BIAS_POSITIONS=1, S12 flags
 Q9	db736005	IQ4_NL quant (S19 = S18 on IQ4_NL)	7424	873	1073	35.7	26.6	S18 env/flags, Inkling-2-Mini-IQ4_NL.gguf
 T10	4b939d81	S19 cache 2650 -> 2900 (IQ4_NL frees VRAM)	7670	890	1080	36.7	28.7	S19 = S18 flags + IQ4_NL, --moe-cache-mib 2900
-S21c	edc5907e	128k ctx control: S21 as before 2026-11-23 (cache 2336; tg5k = decode after 94k)	7782	630.6	848.1	33.65	18.24	S21 + LLAMA_MOE_CACHE_HALF_LIFE=128 --moe-cache-mib 2336, -c 131072, median of 4 runs
-S22	edc5907e	128k: + auto cache, half-life 64, mask from positions, K/V chunks	7782	654.6	860.6	36.45	18.38	LLAMA_ATTN_MASK_POSITIONS=1 GGML_CUDA_FATTN_KV_CHUNK=32768 --moe-cache-mib auto (3028 MiB), S21 flags
-S23	edc5907e	128k: S22 + expert prefetch (fits again)	7782	833.8	1018.6	32.5	18.78	S22 + LLAMA_EXPERT_PREFETCH=1 LLAMA_EXPERT_PREFETCH_SKIP=1
+S19c	edc5907e	S19 as before 2026-11-23 (auto cache, half-life 128)	7782	865.5	1058.9	35.09	26.09	S19 + LLAMA_MOE_CACHE_HALF_LIFE=128 --moe-cache-mib auto, median of 3 runs	32k
+S24	edc5907e	+ half-life 64, mask from positions, K/V chunks (32k)	7772	870.9	1069.7	36.05	27.42	S19 + LLAMA_ATTN_MASK_POSITIONS=1 GGML_CUDA_FATTN_KV_CHUNK=32768 --moe-cache-mib auto, mean of 2 runs	32k
+S21c	edc5907e	S21 as before 2026-11-23 (cache 2336)	7782	630.6	848.1	33.65	18.24	S21 + LLAMA_MOE_CACHE_HALF_LIFE=128 --moe-cache-mib 2336, -c 131072, median of 4 runs	128k
+S22	edc5907e	+ auto cache, half-life 64, mask from positions, K/V chunks	7782	654.6	860.6	36.45	18.38	LLAMA_ATTN_MASK_POSITIONS=1 GGML_CUDA_FATTN_KV_CHUNK=32768 --moe-cache-mib auto (3028 MiB), S21 flags	128k
+S23	edc5907e	S22 + expert prefetch (fits again)	7782	833.8	1018.6	32.5	18.78	S22 + LLAMA_EXPERT_PREFETCH=1 LLAMA_EXPERT_PREFETCH_SKIP=1	128k

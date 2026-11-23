@@ -275,3 +275,17 @@ S22 / ctl / S23 after the decode fix):
 
 S22: decode +8 %, prefill +2-6 %. S23: prefill +16-32 %, decode -3 %. Launchers: ~/startInkling@130k.sh = S22
 (INKLING_PREFETCH=1 for S23); @64k and @32k get #4/#5 too (no effect at 32k: the cache is not larger than one chunk).
+
+### Same changes at 32k (S19c vs S24, bench.py `--long 38000 --skip-cN`, ~790 MiB desktop)
+
+The first S19c control used a fixed cache (2782 MiB): the prefetch staging is allocated on first use, did not fit and
+prefetch turned itself off ("cannot allocate the staging slots", 1.2 GB of VRAM unused). Those runs are discarded; the
+control now uses the auto cache too (it reserves the staging first), so it differs from S24 only by half-life 128.
+
+| run | c1 decode | prefill 958 / 4,724 / 29,725 | decode after 29.7k | needles |
+|---|---:|---:|---:|---:|
+| S19c ctl 1-3 | 34.56 / 35.09 / 35.53 | 839-866 / 1,028-1,061 / 1,037-1,040 | 25.0-28.0 | 3/3 |
+| S24 a, b | **35.93 / 36.17** | 870-871 / 1,069-1,070 / **1,072-1,073** | 26.6-28.3 | 3/3 |
+
+32k: decode +3 %, prefill +1 % (short) / +3 % (29.7k). S19c is below T10 (890 / 1,080 / 36.7) because of the heavier
+desktop (790 vs 560 MiB idle GPU use, smaller cache). The chart now draws each context as its own segment (ctx column).
