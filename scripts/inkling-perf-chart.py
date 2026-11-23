@@ -63,7 +63,7 @@ out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W
        f'aria-label="Inkling-2-Mini prefill and decode speed per optimization step">',
        f'<style>{CSS}</style>', f'<rect class="bg" width="{W}" height="{H}"/>',
        f'<text class="title" x="{PAD_L}" y="26">Inkling-2-Mini on RTX 3070 8 GB - llama.cpp fork, per optimization step</text>',
-       f'<text x="{PAD_L}" y="44">tokens/s, higher is better. UD-Q4_K_M, 32k ctx, q8_0 KV (q4_0 from S10). From B10: bench.py, decode = median of 6 prompts, 2nd decode line = after a 30k prompt.</text>']
+       f'<text x="{PAD_L}" y="44">tokens/s, higher is better. UD-Q4_K_M, 32k ctx, q8_0 KV (q4_0 from S10); IQ4_NL from Q9; S21c-S23: 128k ctx. From B10: bench.py, decode = median of 6 prompts, 2nd decode line = after a 30k prompt (S21c-S23: 94k).</text>']
 
 def panel(y0, title, keys, names, unit_note):
     vals = [f(r[k]) for r in rows for k in keys]

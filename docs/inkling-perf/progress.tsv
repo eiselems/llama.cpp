@@ -23,3 +23,6 @@ E7	a39686409	+ MMA attention bias (S17 = S15 + E7)	7301	845	996	33.6	26.3	LLAMA_
 E8	58797ab4f	+ bias index from positions (S18 = S17 + E8)	7022	861	1057	33.4	24.9	S17 env + LLAMA_ATTN_BIAS_POSITIONS=1, S12 flags
 Q9	db736005	IQ4_NL quant (S19 = S18 on IQ4_NL)	7424	873	1073	35.7	26.6	S18 env/flags, Inkling-2-Mini-IQ4_NL.gguf
 T10	4b939d81	S19 cache 2650 -> 2900 (IQ4_NL frees VRAM)	7670	890	1080	36.7	28.7	S19 = S18 flags + IQ4_NL, --moe-cache-mib 2900
+S21c	edc5907e	128k ctx control: S21 as before 2026-11-23 (cache 2336; tg5k = decode after 94k)	7782	630.6	848.1	33.65	18.24	S21 + LLAMA_MOE_CACHE_HALF_LIFE=128 --moe-cache-mib 2336, -c 131072, median of 4 runs
+S22	edc5907e	128k: + auto cache, half-life 64, mask from positions, K/V chunks	7782	654.6	860.6	36.45	18.38	LLAMA_ATTN_MASK_POSITIONS=1 GGML_CUDA_FATTN_KV_CHUNK=32768 --moe-cache-mib auto (3028 MiB), S21 flags
+S23	edc5907e	128k: S22 + expert prefetch (fits again)	7782	833.8	1018.6	32.5	18.78	S22 + LLAMA_EXPERT_PREFETCH=1 LLAMA_EXPERT_PREFETCH_SKIP=1

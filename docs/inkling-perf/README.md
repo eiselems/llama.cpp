@@ -14,10 +14,18 @@ checks are recorded. Full experiment log and status: [PLAN.md](PLAN.md); ceiling
 | **max prefill (IQ4_NL)** | **S19** | 890 / **1,080** (29.7k: **1,055**) | 36.7 | 7.49 GiB | `scripts/inkling/serve.sh start S19` |
 | **max decode (IQ4_NL)** | **S20** | 503 / 578 (29.7k: 572) | **39.5** | 7.48 GiB | `scripts/inkling/serve.sh start S20` |
 | **128k context (IQ4_NL)** | **S21** | 4k prompt: ~900 | 29.5 at 4k ctx, 34.5 short | 7.48 GiB (smoke) | `scripts/inkling/serve.sh start S21` |
+| **128k, decode first (since 2026-11-23)** | **S22** | 655 / 861 (94k: **760**) | **36.5** (after 94k: 18.4) | 7.6 GiB | `scripts/inkling/serve.sh start S22` |
+| **128k, prefill first (since 2026-11-23)** | **S23** | **834 / 1,019** (94k: **831**) | 32.5 (after 94k: 18.8) | 7.6 GiB | `scripts/inkling/serve.sh start S23` |
 
 IQ4_NL quality (card sampling, thinking): v1 16/16, v2 21/22, v3 10/10, v4 native 3/3, identical to UD-Q4_K_M.
 S19/S20 are sized for 32k context (peak 7.49 GiB of 8). For 64k context lower `--moe-cache-mib` by ~400 MiB:
 the eval at 64k with too big a cache ran out of VRAM.
+
+**128k context, 2026-11-23** (bench.py `--long 120000`, ~790 MiB desktop, all runs gate PASS and 3/3 needles at 94k):
+control S21c = S21 as before (cache 2336, half-life 128), median of 4 runs: 631 / 848 / 715 (94k) prefill, 33.7 decode, 18.2
+after 94k. S22 = S21 + auto cache + half-life 64 + mask from positions + K/V chunks: decode **+8 %**, prefill +4 / +1.5 / +6 %.
+S23 = S22 + prefetch (the staging fits again): prefill **+32 / +20 / +16 %**, decode -3 %. The compute buffer at 128k went
+from 1,753 to 1,061 MiB, so the auto cache grew from 2,336 to 3,028 MiB (S22). Details: [PLAN.md](PLAN.md).
 
 **Since 2026-11-23: `--moe-cache-mib auto`** (with `--moe-cache-margin-mib N`, default 256) sizes the cache from the free
 VRAM after the KV cache, the compute buffers and the prefetch staging, so the presets no longer depend on the desktop's
