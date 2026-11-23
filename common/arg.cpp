@@ -2749,15 +2749,31 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
         }
     ).set_env("LLAMA_ARG_N_CPU_MOE"));
     add_opt(common_arg(
-        {"--moe-cache-mib"}, "N",
-        "GPU cache size in MiB for the MoE experts kept in the CPU. with multiple GPUs, it is split among them like the layers (--tensor-split) (default: 0, disabled)",
+        {"--moe-cache-mib"}, "N|auto",
+        "GPU cache size in MiB for the MoE experts kept in the CPU. with multiple GPUs, it is split among them like the layers (--tensor-split)\n"
+        "'auto' sizes it from the free GPU memory after the KV cache and the compute buffers, leaving --moe-cache-margin-mib free (default: 0, disabled)",
+        [](common_params & params, const std::string & value) {
+            if (value == "auto") {
+                params.moe_cache_size = LLAMA_MOE_CACHE_AUTO;
+                return;
+            }
+            const int mib = std::stoi(value);
+            if (mib < 0) {
+                throw std::invalid_argument("invalid value");
+            }
+            params.moe_cache_size = (size_t) mib*1024*1024;
+        }
+    ).set_env("LLAMA_ARG_MOE_CACHE_MIB"));
+    add_opt(common_arg(
+        {"--moe-cache-margin-mib"}, "N",
+        string_format("with --moe-cache-mib auto: GPU memory in MiB left free per GPU for the runtime and other programs (default: %zu)", params.moe_cache_margin/(1024*1024)),
         [](common_params & params, int value) {
             if (value < 0) {
                 throw std::invalid_argument("invalid value");
             }
-            params.moe_cache_size = (size_t) value*1024*1024;
+            params.moe_cache_margin = (size_t) value*1024*1024;
         }
-    ).set_env("LLAMA_ARG_MOE_CACHE_MIB"));
+    ).set_env("LLAMA_ARG_MOE_CACHE_MARGIN_MIB"));
     add_opt(common_arg(
         {"--moe-cache-cpu-share"}, "F",
         string_format("share of the MoE cache misses that the CPU computes from the host experts instead of uploading them to the GPU once the cache is full, from 0 to 1 (default: %.2f)", (double) params.moe_cache_cpu_share),

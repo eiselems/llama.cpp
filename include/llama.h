@@ -374,6 +374,9 @@ extern "C" {
 
     // NOTE: changing the default values of parameters marked as [EXPERIMENTAL] may cause crashes or incorrect results in certain configurations
     //       https://github.com/ggml-org/llama.cpp/pull/7544
+    // moe_cache_size value: size the MoE cache from the free device memory, after the KV cache and the compute buffers
+    #define LLAMA_MOE_CACHE_AUTO SIZE_MAX
+
     struct llama_context_params {
         uint32_t n_ctx;                 // text context, 0 = from model
         uint32_t n_batch;               // logical maximum batch size that can be submitted to llama_decode
@@ -408,6 +411,7 @@ extern "C" {
 
         size_t moe_cache_size;      // device cache in bytes for the experts kept in host memory, split among the devices like the layers, 0 = disabled [EXPERIMENTAL]
         float  moe_cache_cpu_share; // share of the MoE cache misses computed on the CPU instead of uploaded, 0 = all uploaded [EXPERIMENTAL]
+        size_t moe_cache_margin;    // with moe_cache_size = LLAMA_MOE_CACHE_AUTO: device memory in bytes left free after the cache [EXPERIMENTAL]
 
         // Abort callback
         // if it returns true, execution of llama_decode() will be aborted

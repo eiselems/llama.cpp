@@ -377,6 +377,7 @@ llama_context::llama_context(
     cparams.kv_unified     = params.kv_unified;
     cparams.moe_cache_size      = params.moe_cache_size;
     cparams.moe_cache_cpu_share = params.moe_cache_cpu_share;
+    cparams.moe_cache_margin    = params.moe_cache_margin;
 
     // resolved after flash attention, see resolve_fused_ops()
     {
@@ -615,11 +616,20 @@ llama_context::llama_context(
             LLAMA_LOG_INFO("%s: pipeline parallelism enabled\n", __func__);
         }
 
+        const bool moe_cache_auto = cparams.moe_cache_size == LLAMA_MOE_CACHE_AUTO;
+        if (moe_cache_auto) {
+            // first a small cache, so the compute buffers are reserved for a graph that reads the cache
+            cparams.moe_cache_size = moe_cache_auto_placeholder;
+        }
         if (cparams.moe_cache_size > 0) {
             moe_cache = std::make_unique<llama_moe_cache>(model, model.no_alloc(), backend_ptrs, backend_buft, cparams.moe_cache_size, cparams.moe_cache_cpu_share);
         }
 
         sched_reserve();
+
+        if (moe_cache_auto && !model.no_alloc()) {
+            moe_cache_resize_auto();
+        }
 
         if (!cparams.flash_attn) {
             if (ggml_is_quantized(params.type_v)) {
@@ -794,6 +804,62 @@ void llama_context::sched_new(const sched_params & params) {
     }
 
     sched_params_cur = params;
+}
+
+void llama_context::moe_cache_resize_auto() {
+    if (!moe_cache) {
+        return; // no layer has its experts in host memory
+    }
+
+    // the expert prefetch allocates its staging slots on first use, allocate them now so the cache leaves room for them
+    if (prefetch.enabled) {
+        ggml_backend_t gpu   = nullptr;
+        int            n_gpu = 0;
+        for (ggml_backend_t b : backend_ptrs) {
+            if (ggml_backend_dev_type(ggml_backend_get_device(b)) == GGML_BACKEND_DEVICE_TYPE_GPU) {
+                gpu = b;
+                n_gpu++;
+            }
+        }
+        if (n_gpu == 1) {
+            expert_prefetch_init(gpu);
+        }
+    }
+
+    // the free memory of the devices that hold the cache, plus the placeholder cache that is freed below
+    size_t avail = 0;
+    size_t n_dev = 0;
+    for (const auto & [buft, size] : moe_cache->memory_breakdown()) {
+        ggml_backend_dev_t dev = ggml_backend_buft_get_device(buft);
+        if (dev == nullptr || ggml_backend_buft_is_host(buft)) {
+            continue;
+        }
+        size_t free  = 0;
+        size_t total = 0;
+        ggml_backend_dev_memory(dev, &free, &total);
+        avail += free + size;
+        n_dev++;
+    }
+    if (n_dev == 0 || avail == 0) {
+        LLAMA_LOG_WARN("%s: the devices do not report their free memory, keeping the %zu MiB MoE cache\n", __func__, moe_cache_auto_placeholder/(1024*1024));
+        return;
+    }
+    const size_t margin = cparams.moe_cache_margin*n_dev;
+    const size_t size   = avail > margin ? avail - margin : 0;
+    LLAMA_LOG_INFO("%s: MoE cache auto size: %zu MiB = %zu MiB free incl. the placeholder - %zu MiB margin\n", __func__,
+            size/(1024*1024), avail/(1024*1024), margin/(1024*1024));
+
+    moe_cache.reset(); // free the placeholder before allocating the cache
+    cparams.moe_cache_size = size;
+    if (size > 0) {
+        moe_cache = std::make_unique<llama_moe_cache>(model, model.no_alloc(), backend_ptrs, backend_buft, size, cparams.moe_cache_cpu_share);
+    } else {
+        LLAMA_LOG_WARN("%s: no free memory for the MoE cache, it is disabled\n", __func__);
+    }
+
+    // the graph reads the new cache
+    sched_need_reserve = true;
+    sched_reserve();
 }
 
 void llama_context::sched_reserve() {
@@ -4693,6 +4759,7 @@ llama_context_params llama_context_default_params() {
         /*.type_v                      =*/ GGML_TYPE_F16,
         /*.moe_cache_size              =*/ 0,
         /*.moe_cache_cpu_share         =*/ 0.0f,
+        /*.moe_cache_margin            =*/ 0,
         /*.abort_callback              =*/ nullptr,
         /*.abort_callback_data         =*/ nullptr,
         /*.embeddings                  =*/ false,
