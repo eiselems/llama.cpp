@@ -9,6 +9,9 @@ import csv, html, os, sys
 
 root = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'docs', 'inkling-perf')
 rows = list(csv.DictReader(open(os.path.join(root, 'progress.tsv')), delimiter='\t'))
+# the chart stays on 32k context: rows with another ctx are kept in the table but not drawn (CHART_CTX=all draws them)
+if os.environ.get('CHART_CTX', '32k') != 'all':
+    rows = [r for r in rows if (r.get('ctx') or '32k').strip() == os.environ.get('CHART_CTX', '32k')]
 if not rows:
     sys.exit('no rows')
 
@@ -72,7 +75,7 @@ out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W
        f'aria-label="Inkling-2-Mini prefill and decode speed per optimization step">',
        f'<style>{CSS}</style>', f'<rect class="bg" width="{W}" height="{H}"/>',
        f'<text class="title" x="{PAD_L}" y="26">Inkling-2-Mini on RTX 3070 8 GB - llama.cpp fork, per optimization step</text>',
-       f'<text x="{PAD_L}" y="44">tokens/s, higher is better. UD-Q4_K_M, 32k ctx, q8_0 KV (q4_0 from S10); IQ4_NL from Q9. From B10: bench.py, decode = median of 6 prompts, 2nd decode line = after a 30k prompt. 128k block: after a 94k prompt.</text>']
+       f'<text x="{PAD_L}" y="44">tokens/s, higher is better. UD-Q4_K_M, 32k ctx, q8_0 KV (q4_0 from S10); IQ4_NL from Q9. From B10: bench.py, decode = median of 6 prompts, 2nd decode line = after a 30k prompt.</text>']
 
 def panel(y0, title, keys, names, unit_note):
     vals = [f(r[k]) for r in rows for k in keys]

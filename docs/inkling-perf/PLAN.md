@@ -289,3 +289,12 @@ control now uses the auto cache too (it reserves the staging first), so it diffe
 
 32k: decode +3 %, prefill +1 % (short) / +3 % (29.7k). S19c is below T10 (890 / 1,080 / 36.7) because of the heavier
 desktop (790 vs 560 MiB idle GPU use, smaller cache). The chart now draws each context as its own segment (ctx column).
+
+## 2026-11-23: next-layer expert prediction (#1 from the paper scan), feasibility
+
+`llama-inkling-moe-predict` (examples/inkling-moe-predict): router of application i+k on the router input of i,
+256 greedy decode tokens, IQ4_NL: recall of the 8 experts **0.735** (i+1), 0.651 (i+2), 0.580 (i+3), the same for
+experts i did not use (0.733); the previous token as predictor (E9 idea) only 0.404. Upper bound of the gain: the CPU
+expert part is ~4-5 ms of a ~28 ms decode token, so moving ~70 % of it to the GPU is at most ~+11 % decode; wrong
+predictions cost PCIe and cache entries. Needs non-blocking predictive fills (E9 lost 1.6 % by waiting on fills).
+The chart shows 32k rows only now (CHART_CTX=all draws the 128k rows too).
