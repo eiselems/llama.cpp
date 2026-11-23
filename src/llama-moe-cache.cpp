@@ -48,6 +48,7 @@ struct moe_cache_lru {
     int32_t head[n_class_max];
     int32_t tail[n_class_max];
     std::vector<int8_t>  list_of; // [n_slots] class list of the slot
+    std::vector<uint8_t> inflight; // [n_slots] a background upload into the slot may still run: not a victim
     int32_t n_filled = 0;         // slots that hold an expert
 
     std::vector<float>   crf;      // [n_layer*n_expert]
@@ -84,6 +85,7 @@ struct moe_cache_lru {
         head[0] = 0;
         tail[0] = n_slots - 1;
         list_of.assign(n_slots, 0);
+        inflight.assign(n_slots, 0);
         crf.assign((size_t) n_layer*n_expert, 0.0f);
         last_use.assign((size_t) n_layer*n_expert, -1);
         clock.assign(n_layer, 0);
@@ -157,7 +159,7 @@ struct moe_cache_lru {
     // the least recently used slot of list c that this plan() does not select, -1 if none
     int32_t candidate(int c, int32_t il) const {
         for (int32_t s = head[c]; s >= 0; s = next[s]) {
-            if (!is_selected(il, key_of[s])) {
+            if (!is_selected(il, key_of[s]) && !inflight[s]) {
                 return s;
             }
         }
@@ -360,6 +362,8 @@ struct llama_moe_cache::impl {
         ggml_backend_t       fill_backend = nullptr;
         ggml_backend_event_t ev_compute   = nullptr; // compute stream position the fill must wait for
         ggml_backend_event_t ev_fill      = nullptr; // fills of the last copy() done
+        std::vector<ggml_backend_event_t> ring;     // LLAMA_MOE_CACHE_PREDICT: one event per batch of background fills
+        size_t ring_pos = 0;
         bool fill_failed = false;
         size_t host_bytes = 0; // host experts of the layers it caches
         double split = 0.0;    // share of the budget
@@ -421,10 +425,21 @@ struct llama_moe_cache::impl {
         int32_t expert;
         int32_t slot;
         int32_t dev;
+        ggml_backend_event_t ev = nullptr; // LLAMA_MOE_CACHE_PREDICT: done when this event is
+        bool predicted = false;
     };
     std::vector<pending_fill> pending;
     bool async_fill = false;
     size_t n_async_fill = 0;
+
+    // LLAMA_MOE_CACHE_PREDICT=N: in decode, up to N experts that the next layer application is predicted to select (its
+    // router on this application's router input, see build_moe_ffn) are uploaded in the background; a background fill
+    // becomes a hit only once its upload is done (event query), it never waits
+    int32_t predict_max = 0;
+    std::vector<ggml_tensor *> pred_of;   // [n_layer] predicted experts of the next application, nullptr if none
+    std::vector<int32_t> pred_ids;
+    std::vector<moe_cache_lru::fill> pred_fills;
+    size_t n_pred_fill = 0, n_pred_commit = 0, n_pred_dup = 0, n_pred_lost = 0;
 
     std::vector<device> devices;
     std::vector<group> groups;
@@ -480,6 +495,10 @@ struct llama_moe_cache::impl {
         if (const char * v = getenv("LLAMA_MOE_CACHE_ASYNC_FILL"); v != nullptr && atoi(v) != 0) {
             async_fill = true;
         }
+        if (const char * v = getenv("LLAMA_MOE_CACHE_PREDICT"); v != nullptr && atoi(v) > 0) {
+            predict_max = atoi(v);
+        }
+        pred_of.assign(model.layers.size(), nullptr);
         if (const char * v = getenv("LLAMA_MOE_CACHE_DEDUP"); v != nullptr && *v != '\0') {
             dedup = std::clamp(atoi(v), 0, 2);
         }
@@ -795,9 +814,16 @@ struct llama_moe_cache::impl {
         if (n_async_fill > 0) {
             LLAMA_LOG_INFO("llama_moe_cache: %zu experts filled in the background\n", n_async_fill);
         }
+        if (n_pred_fill > 0) {
+            LLAMA_LOG_INFO("llama_moe_cache: %zu predicted experts uploaded: %zu entered the cache, %zu were cached meanwhile, %zu evicted before done\n",
+                    n_pred_fill, n_pred_commit, n_pred_dup, n_pred_lost);
+        }
         for (auto & d : devices) {
             if (d.fill_backend) {
                 ggml_backend_synchronize(d.fill_backend);
+            }
+            for (ggml_backend_event_t ev : d.ring) {
+                ggml_backend_event_free(ev);
             }
             if (d.ev_compute) {
                 ggml_backend_event_free(d.ev_compute);
@@ -942,11 +968,24 @@ struct llama_moe_cache::impl {
 
         ids.resize(ggml_nelements(sel));
         ggml_backend_tensor_get_async(backend, sel, ids.data(), 0, ggml_nbytes(sel));
+        // the experts predicted for the next application, computed with the selected ones
+        const ggml_tensor * pred = predict_max > 0 && sel->src[0]->ne[1] == 1 ? pred_of[il] : nullptr;
+        if (pred != nullptr && pred->buffer != nullptr && !ggml_backend_buffer_is_host(pred->buffer) && pred->type == GGML_TYPE_I32) {
+            pred_ids.resize(ggml_nelements(pred));
+            ggml_backend_tensor_get_async(backend, pred, pred_ids.data(), 0, ggml_nbytes(pred));
+        } else {
+            pred_ids.clear();
+        }
         ggml_backend_synchronize(backend);
+
+        // with prediction: the background fills whose uploads are done enter the cache, the others stay pending, no wait
+        if (predict_max > 0) {
+            commit_pending(false);
+        }
 
         // background fills of earlier plans: wait for their uploads (long done in practice), then point the slot maps at
         // them; after the synchronize above, so no slot map upload of an earlier copy is still reading the host data
-        if (!pending.empty()) {
+        if (!pending.empty() && predict_max == 0) {
             for (auto & d : devices) {
                 if (d.ev_fill != nullptr) {
                     ggml_backend_event_synchronize(d.ev_fill);
@@ -994,6 +1033,9 @@ struct llama_moe_cache::impl {
                 slots[f.expert] = g.lru.n_slots + z; // this token: computed on the CPU, the device reads a zero slot
                 cpu.push_back({ f.expert, g.lru.n_slots + z });
                 pending.push_back({ l.ig, key_il, f.expert, f.slot, g.id });
+                if (predict_max > 0) {
+                    g.lru.inflight[f.slot] = 1;
+                }
                 z++;
             }
             fills.resize(keep);
@@ -1043,7 +1085,17 @@ struct llama_moe_cache::impl {
                 }
             }
             ggml_backend_event_record(d.ev_fill, d.fill_backend);
+            if (predict_max > 0) {
+                ggml_backend_event_t ev = next_ring_event(g.id);
+                ggml_backend_event_record(ev, d.fill_backend);
+                for (auto & p : pending) {
+                    if (p.ev == nullptr) {
+                        p.ev = ev;
+                    }
+                }
+            }
         }
+
 
         stats & st = ids.size() <= (size_t) 8*n_expert_used ? stats_small : stats_large;
         st.hits   += n_hit;
@@ -1058,10 +1110,139 @@ struct llama_moe_cache::impl {
         // of the key layer before plan() changes its data; a pageable-memory H2D copy may also be staged at once
         ggml_backend_tensor_set_async(backend, dst, g.lru.slot_map[il], 0, ggml_nbytes(l.slot_map));
 
+        // predicted experts of the next application: upload the uncached ones in the background, after the slot map,
+        // so that this layer's own uploads do not wait behind them in the copy engine (the slot map data is staged at once,
+        // pageable host memory; an expert this plan selected is never evicted for a prediction)
+        // LLAMA_MOE_CACHE_PREDICT_DRY=1: predict and read back, but upload nothing (cost of the prediction alone)
+        static const bool pred_dry = [] { const char * v = getenv("LLAMA_MOE_CACHE_PREDICT_DRY"); return v && atoi(v) != 0; }();
+        if (!pred_ids.empty() && !pred_dry) {
+            predict_fills(backend, il, l, g);
+        }
+
         return true;
     }
 
     std::vector<moe_cache_lru::fill> bg_fills;
+
+    // LLAMA_MOE_CACHE_PREDICT: background fills whose upload is done (or all, with force) enter the slot maps
+    // called after a synchronize of the compute backend, so no slot map upload is still reading the host data
+    void commit_pending(bool force) {
+        size_t keep = 0;
+        for (size_t i = 0; i < pending.size(); ++i) {
+            const pending_fill & f = pending[i];
+            if (f.ev != nullptr && !force && !ggml_backend_event_query(f.ev)) {
+                pending[keep++] = f;
+                continue;
+            }
+            if (f.ev != nullptr && force) {
+                ggml_backend_event_synchronize(f.ev);
+            }
+            moe_cache_lru & lru = groups[f.ig].lru;
+            lru.inflight[f.slot] = 0;
+            if (lru.key_of[f.slot] != lru.make_key(f.key_il, f.expert)) {
+                n_pred_lost += f.predicted; // evicted for another expert meanwhile
+                continue;
+            }
+            int32_t & m = lru.slot_map[f.key_il][f.expert];
+            if (m >= lru.n_slots) {
+                m = f.slot; // not cached (or computed on the CPU this token): from now on in the slot
+                n_pred_commit += f.predicted;
+            } else if (m != f.slot) {
+                // a later plan cached it in another slot meanwhile: free this one
+                lru.key_of[f.slot] = -1;
+                lru.n_filled--;
+                n_pred_dup += f.predicted;
+            }
+        }
+        pending.resize(keep);
+    }
+
+    // the next event of the ring; an event that pending fills still wait for is waited for first (rare: 64 batches)
+    ggml_backend_event_t next_ring_event(int32_t id) {
+        device & d = devices[id];
+        ggml_backend_event_t ev = d.ring[d.ring_pos];
+        d.ring_pos = (d.ring_pos + 1) % d.ring.size();
+        if (std::any_of(pending.begin(), pending.end(), [&](const pending_fill & f) { return f.ev == ev; })) {
+            ggml_backend_event_synchronize(ev);
+            commit_pending(false);
+        }
+        return ev;
+    }
+
+    // upload up to predict_max experts that the next application il + 1 is predicted to select and that are not cached
+    void predict_fills(ggml_backend_t backend, int32_t il, const layer & l, const group & g) {
+        const int32_t j = il + 1;
+        if (j >= (int32_t) layers.size() || layers[j].ig < 0) {
+            return;
+        }
+        const layer & lj = layers[j];
+        group & gj = groups[lj.ig];
+        if (gj.lru.n_slots == 0 || !ensure_fill_backend(gj.id)) {
+            return;
+        }
+        const int32_t kl = gj.lru.key_layer_of[j];
+        if (kl < 0) {
+            return;
+        }
+        // in the group of this application, the experts its plan selected must stay (this split reads them)
+        const int32_t protect = lj.ig == l.ig ? g.lru.key_layer_of[il] : kl;
+        pred_fills.clear();
+        for (int32_t e : pred_ids) {
+            if ((int32_t) pred_fills.size() >= predict_max) {
+                break;
+            }
+            if (e < 0 || e >= gj.lru.n_expert || gj.lru.slot_map[kl][e] < gj.lru.n_slots) {
+                continue; // cached
+            }
+            const int32_t key = gj.lru.make_key(kl, e);
+            if (std::any_of(pending.begin(), pending.end(), [&](const pending_fill & f) {
+                    return f.ig == lj.ig && gj.lru.key_of[f.slot] == key; })) {
+                continue; // already on its way
+            }
+            const int32_t s = gj.lru.victim(protect);
+            const int32_t old = gj.lru.key_of[s];
+            if (old >= 0) {
+                int32_t & m = gj.lru.slot_map[gj.lru.key_layer(old)][gj.lru.key_expert(old)];
+                if (m == s) {
+                    m = gj.lru.empty;
+                }
+            } else {
+                gj.lru.n_filled++;
+            }
+            gj.lru.key_of[s] = key;
+            gj.lru.move(s, gj.lru.crf[key] >= 1.0f ? gj.lru.class_of(key) : 0);
+            gj.lru.inflight[s] = 1;
+            pred_fills.push_back({ e, s });
+        }
+        if (pred_fills.empty()) {
+            return;
+        }
+        device & d = devices[gj.id];
+        // the slots may hold experts that earlier work on the compute stream still reads
+        ggml_backend_event_record(d.ev_compute, d.backend);
+        ggml_backend_event_wait(d.fill_backend, d.ev_compute);
+        for (size_t ip = 0; ip < lj.experts.size(); ++ip) {
+            const ggml_tensor * w    = lj.experts[ip];
+            ggml_tensor       * bank = gj.banks[ip];
+            const size_t expert_size = w->nb[2];
+            // LLAMA_MOE_CACHE_PREDICT_CHUNK=bytes: smaller copies, so that the small copies of the compute stream can go between them
+            static const size_t chunk = [] { const char * v = getenv("LLAMA_MOE_CACHE_PREDICT_CHUNK"); return v ? (size_t) atoll(v) : (size_t) 0; }();
+            for (const auto & f : pred_fills) {
+                const uint8_t * src = (const uint8_t *) w->data + f.expert*expert_size;
+                for (size_t o = 0; o < expert_size; o += chunk ? chunk : expert_size) {
+                    const size_t n = std::min(expert_size - o, chunk ? chunk : expert_size);
+                    ggml_backend_tensor_set_async(d.fill_backend, bank, src + o, f.slot*expert_size + o, n);
+                }
+            }
+        }
+        ggml_backend_event_t ev = next_ring_event(gj.id);
+        ggml_backend_event_record(ev, d.fill_backend);
+        for (const auto & f : pred_fills) {
+            pending.push_back({ lj.ig, kl, f.expert, f.slot, gj.id, ev, true });
+        }
+        n_pred_fill += pred_fills.size();
+        GGML_UNUSED(backend);
+    }
 
     bool ensure_fill_backend(int32_t id) {
         device & d = devices[id];
@@ -1070,11 +1251,16 @@ struct llama_moe_cache::impl {
         }
         ggml_backend_dev_t dev = ggml_backend_get_device(d.backend);
         d.fill_backend = ggml_backend_dev_init(dev, nullptr);
+        bool ring_ok = true;
         if (d.fill_backend != nullptr) {
             d.ev_compute = ggml_backend_event_new(dev);
             d.ev_fill    = ggml_backend_event_new(dev);
+            for (int i = 0; i < (predict_max > 0 ? 64 : 0); ++i) {
+                d.ring.push_back(ggml_backend_event_new(dev));
+                ring_ok = ring_ok && d.ring.back() != nullptr;
+            }
         }
-        if (d.fill_backend == nullptr || d.ev_compute == nullptr || d.ev_fill == nullptr) {
+        if (d.fill_backend == nullptr || d.ev_compute == nullptr || d.ev_fill == nullptr || !ring_ok) {
             LLAMA_LOG_WARN("llama_moe_cache: background fill disabled on %s (no second stream or events)\n", ggml_backend_dev_name(dev));
             d.fill_failed = true;
             return false;
@@ -1118,6 +1304,10 @@ llama_moe_cache_lookup llama_moe_cache::build_lookup(const llm_graph_context & g
     bool cpu_part = !layer.weight_before_ffn && g.loras->empty();
     for (ggml_tensor * w : { layer.up_exps, layer.gate_exps, layer.down_exps, layer.gate_up_exps }) {
         cpu_part = cpu_part && !(w != nullptr && g.hdmd != nullptr && g.hdmd->rot.count(w) > 0);
+    }
+
+    if ((size_t) il < pimpl->pred_of.size()) {
+        pimpl->pred_of[il] = layer.pred_next;
     }
 
     ggml_tensor * cpu_map  = cpu_part ? pimpl->get_cpu_map(il, selected_experts->ne[1]) : nullptr;
@@ -1182,6 +1372,10 @@ ggml_tensor * llama_moe_cache::build_experts(const llm_graph_context & g, const 
     }
 
     return experts;
+}
+
+bool llama_moe_cache::predict_enabled() const {
+    return pimpl->predict_max > 0;
 }
 
 bool llama_moe_cache::copy(ggml_backend_t backend, const ggml_tensor * src, ggml_tensor * dst, ggml_cgraph * graph) {

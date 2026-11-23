@@ -17,6 +17,7 @@ struct llama_moe_cache_layer {
     ggml_tensor * down_exps;
     ggml_tensor * gate_up_exps;
     bool          weight_before_ffn; // the router weights scale the expert input
+    ggml_tensor * pred_next = nullptr; // decode, LLAMA_MOE_CACHE_PREDICT: I32 experts predicted for the next layer application
 };
 
 // the lookup of the selected experts of a layer in the MoE cache, see llama_moe_cache::build_lookup
@@ -63,6 +64,9 @@ public:
     bool has_expert(const ggml_tensor * w, int64_t e) const;
 
     std::map<ggml_backend_buffer_type_t, size_t> memory_breakdown() const;
+
+    // LLAMA_MOE_CACHE_PREDICT > 0: the graph may pass the experts predicted for the next layer application
+    bool predict_enabled() const;
 
 private:
     struct impl;
