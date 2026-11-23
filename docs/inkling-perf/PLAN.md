@@ -298,3 +298,22 @@ experts i did not use (0.733); the previous token as predictor (E9 idea) only 0.
 expert part is ~4-5 ms of a ~28 ms decode token, so moving ~70 % of it to the GPU is at most ~+11 % decode; wrong
 predictions cost PCIe and cache entries. Needs non-blocking predictive fills (E9 lost 1.6 % by waiting on fills).
 The chart shows 32k rows only now (CHART_CTX=all draws the 128k rows too).
+
+### #1 implemented and rejected: predictive background fills (LLAMA_MOE_CACHE_PREDICT=N, opt-in)
+
+Decode graphs compute the next application's router on this application's router input; the cache uploads up to N
+uncached predicted experts on the fill stream, and a fill only becomes a hit once `ggml_backend_event_query` says it is
+done (no waiting, the E9 lesson). S24, 32k, smoke.py (4k prompts + short decode):
+
+| N | CPU share | hit rate | misses on CPU | decode short | after 4k |
+|---:|---:|---:|---:|---:|---:|
+| 0 | 0.7 | 73.4-74.4 % | 27.9-28.9k | **34.8-37.8** | **30.6-31.2** |
+| 1 / 2 / 4 | 0.7 | 81.9 / - / 87.9 % | 19.6k / - / 13.1k | 35.9 / 31.2 / 29.8 | 29.6 / 27.5 / 25.0 |
+| 0 | 1.0 | 23.7 % | 119k | 21.8 | 20.7 |
+| 2 / 4 / 8 | 1.0 | 82.9 / 86.5 / 87.3 % | 26.4k / 20.9k / 19.6k | 33.5 / 31.4 / 30.2 | 28.4 / 26.4 / 24.5 |
+
+The prediction alone (DRY=1) costs 1-2 %. nsys (N = 4 vs 0): kernel time the same, host waits in cudaStreamSynchronize
+54 -> 88 us on average, H2D copy time 1.7 -> 4.6 s per run. Uploading after the slot map and 256 KB chunks did not help.
+Conclusion: an upload and a CPU computation of a missed expert read the same ~3.3 MB from DRAM, so on this dual-channel
+desktop the trade saves nothing, and the 27 % wrong predictions add PCIe/DRAM traffic. The papers that gain from it run
+on servers with many memory channels. Kept opt-in, off by default (no effect when off: S24 37.4-37.75 t/s).
