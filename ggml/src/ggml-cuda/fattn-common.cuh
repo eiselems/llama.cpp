@@ -27,7 +27,15 @@ struct fattn_indexed_bias {
     int32_t mask_from_positions; // ggml_flash_attn_ext_set_mask_from_positions: no mask tensor, see fattn_mask_from_positions
     int32_t col0;                // KV chunks (GGML_CUDA_FATTN_KV_CHUNK): first mask column of the chunk, for the positions
     float2 * chunk_meta;         // KV chunks: per output row the KQ max and rowsum of the normalized result, nullptr if unused
+    int64_t s_head;              // table strides in elements: head (ne0), bin (ne1), query (ne2); a permuted view of a
+    int64_t s_bin;               // [n_bins, n_head, n_query] table reads consecutive bins (= consecutive cells) contiguously
+    int64_t s_query;
+    const int4 * kv_window;      // GGML_CUDA_FATTN_KV_WINDOW: per query tile {first, end, gap begin, gap end} K/V block of the mask, nullptr if unused
 };
+
+static __device__ __forceinline__ float fattn_bias_table(const fattn_indexed_bias & bias, const int64_t query, const int bin, const int head) {
+    return bias.table[query*bias.s_query + bin*bias.s_bin + head*bias.s_head];
+}
 
 // the causal mask of one sequence from the positions: 0 if 0 <= cell_pos <= query_pos, else -inf
 static __device__ __forceinline__ float fattn_mask_from_positions(const fattn_indexed_bias & bias, const int sequence, const int jq, const int k) {
@@ -875,6 +883,69 @@ static __global__ void flash_attn_positions_to_KV_max(const int32_t * positions,
     }
 }
 
+// GGML_CUDA_FATTN_KV_WINDOW: the K/V blocks of nbatch_fa cells that a query tile has to visit, from the mask:
+// {first visible block, last visible block + 1, begin and end of the longest fully masked run in between}.
+// Fully masked blocks add exactly nothing (exp(-inf) = 0, the running max is unchanged), the kernel skips the gap and
+// visits the remaining blocks in the same ascending order, so the result is bit-identical. Sliding-window layers
+// with a ring K/V cache see a window of cells that is either one run or wraps around the end of the cache.
+#define FATTN_KV_WINDOW_MAX_BLOCKS 1024
+template <int ncols1>
+__launch_bounds__(FATTN_KQ_STRIDE/2, 1)
+static __global__ void flash_attn_mask_to_KV_window(
+        const half2 * mask_ptr, int4 * window, const int n_kv, const int nbatch_fa, const int ne01, const int64_t s31, const int64_t s33) {
+    const int ne31     = gridDim.x;
+    const int sequence = blockIdx.y;
+    const int jt       = blockIdx.x;
+    const int nblocks  = (n_kv + nbatch_fa - 1) / nbatch_fa;
+
+    __shared__ int vis[FATTN_KV_WINDOW_MAX_BLOCKS];
+    for (int b = threadIdx.x; b < nblocks; b += blockDim.x) {
+        vis[b] = 0;
+    }
+    ggml_cuda_pdl_sync();
+    __syncthreads();
+
+    const half2 * mask = mask_ptr + sequence*s33 + int64_t(jt)*ncols1*s31;
+    for (int j = 0; j < ncols1 && jt*ncols1 + j < ne01; ++j) {
+        for (int c2 = threadIdx.x; c2 < n_kv/2; c2 += blockDim.x) {
+            const float2 m = __half22float2(mask[j*s31 + c2]);
+            if (!isinf(m.x) || !isinf(m.y)) {
+                // a pair never straddles two blocks: nbatch_fa is even
+                vis[(2*c2)/nbatch_fa] = 1;
+            }
+        }
+    }
+    __syncthreads();
+
+    if (threadIdx.x != 0) {
+        return;
+    }
+    int first = -1, last = -1;
+    for (int b = 0; b < nblocks; ++b) {
+        if (vis[b]) {
+            first = first < 0 ? b : first;
+            last  = b;
+        }
+    }
+    int4 w = make_int4(0, nblocks, 0, 0);
+    if (first >= 0) {
+        w.x = first;
+        w.y = last + 1;
+        int run0 = 0, best0 = 0, best1 = 0;
+        for (int b = first; b <= last; ++b) {
+            if (vis[b]) {
+                run0 = b + 1;
+            } else if (b + 1 - run0 > best1 - best0) {
+                best0 = run0;
+                best1 = b + 1;
+            }
+        }
+        w.z = best0;
+        w.w = best1;
+    }
+    window[sequence*ne31 + jt] = w;
+}
+
 void ggml_cuda_flash_attn_ext_compact_mask(
         const ggml_tensor * mask, int32_t * indices, int32_t * counts, int32_t n_queries, int32_t ncols1, int32_t n_kv_max, cudaStream_t stream);
 
@@ -1215,6 +1286,7 @@ void launch_fattn_impl(const fattn_kv_chunk * ch,
         ggml_cuda_flash_attn_ext_get_f16_extra_data(KQV, need_f16_K, need_f16_V);
 
     ggml_cuda_pool_alloc<int>    KV_max(pool);
+    ggml_cuda_pool_alloc<int4>   KV_window(pool);
     ggml_cuda_pool_alloc<float>  dst_tmp(pool);
     ggml_cuda_pool_alloc<float2> dst_tmp_meta(pool);
 
@@ -1380,6 +1452,23 @@ void launch_fattn_impl(const fattn_kv_chunk * ch,
         }
     }
 
+    // GGML_CUDA_FATTN_KV_WINDOW=1: per query tile the visible K/V blocks of the mask, see flash_attn_mask_to_KV_window
+    {
+        static const bool kv_window_env = [] { const char * e = getenv("GGML_CUDA_FATTN_KV_WINDOW"); return e && atoi(e) != 0; }();
+        const int nblocks = (int) ((n_kv_cols + nbatch_fa - 1) / nbatch_fa);
+        if (kv_window_env && mask && !use_sparse && !kv_rows && mask->ne[2] == 1 && Q->ne[1] >= 256 && n_kv_cols % 2 == 0 &&
+                nbatch_fa % 2 == 0 && nblocks <= FATTN_KV_WINDOW_MAX_BLOCKS) {
+            const dim3 blocks_num_w(ntiles_x, Q->ne[3], 1);
+            const dim3 block_dim_w(FATTN_KQ_STRIDE/2, 1, 1);
+            KV_window.alloc(blocks_num_w.x*blocks_num_w.y);
+            ggml_cuda_kernel_launch_params launch_params = ggml_cuda_kernel_launch_params(blocks_num_w, block_dim_w, 0, main_stream);
+            ggml_cuda_kernel_launch(flash_attn_mask_to_KV_window<ncols1>, launch_params,
+                (const half2 *) mask_data, KV_window.ptr, (int) n_kv_cols, nbatch_fa, (int) Q->ne[1],
+                (int64_t) (mask->nb[1] / sizeof(half2)), (int64_t) (mask->nb[3] / sizeof(half2)));
+            CUDA_CHECK(cudaGetLastError());
+        }
+    }
+
     // K/V are shared by all slices when read through kv_rows
     if (kv_rows) {
         nb13 = 0;
@@ -1530,7 +1619,11 @@ void launch_fattn_impl(const fattn_kv_chunk * ch,
                            dst->src[7] ? (int32_t) dst->src[7]->ne[0] : 0,
                            mask_pos,
                            (int32_t) (ch ? ch->c0 : 0),
-                           ch && (stream_k || parallel_blocks == 1) ? ch->meta : nullptr}
+                           ch && (stream_k || parallel_blocks == 1) ? ch->meta : nullptr,
+                           dst->src[6] ? (int64_t) (dst->src[6]->nb[0]/sizeof(float)) : 0,
+                           dst->src[6] ? (int64_t) (dst->src[6]->nb[1]/sizeof(float)) : 0,
+                           dst->src[6] ? (int64_t) (dst->src[6]->nb[2]/sizeof(float)) : 0,
+                           KV_window.ptr}
     );
     CUDA_CHECK(cudaGetLastError());
 

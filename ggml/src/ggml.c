@@ -5563,7 +5563,7 @@ void ggml_flash_attn_ext_add_position_bias(
         GGML_ASSERT(mask->ne[0] == n_cols && mask->ne[1] == q->ne[1]);
         GGML_ASSERT(mask->ne[2] == 1 && mask->ne[3] == q->ne[3]);
     }
-    GGML_ASSERT(table->type == GGML_TYPE_F32 && ggml_is_contiguous(table));
+    GGML_ASSERT(table->type == GGML_TYPE_F32 && table->nb[0] % sizeof(float) == 0 && table->nb[1] % sizeof(float) == 0 && table->nb[2] % sizeof(float) == 0); // any strides, e.g. a permuted view
     GGML_ASSERT(table->ne[0] == q->ne[2] && table->ne[1] > 0 && table->ne[2] == q->ne[1]*q->ne[3] && table->ne[3] == 1);
     GGML_ASSERT(positions->type == GGML_TYPE_I32 && ggml_is_contiguous(positions) && ggml_is_matrix(positions));
     GGML_ASSERT(positions->ne[0] == n_cols && positions->ne[1] == 2*q->ne[3] && q->ne[1] <= positions->ne[0]);
@@ -5603,7 +5603,7 @@ void ggml_flash_attn_ext_add_indexed_bias(
     const struct ggml_tensor * mask = a->src[3];
     GGML_ASSERT(mask && mask->ne[0] == (a->src[5] ? a->src[5]->ne[0] : a->src[1]->ne[1]) && mask->ne[1] == q->ne[1]);
     GGML_ASSERT(mask->ne[2] == 1 && mask->ne[3] == q->ne[3]);
-    GGML_ASSERT(table->type == GGML_TYPE_F32 && ggml_is_contiguous(table));
+    GGML_ASSERT(table->type == GGML_TYPE_F32 && table->nb[0] % sizeof(float) == 0 && table->nb[1] % sizeof(float) == 0 && table->nb[2] % sizeof(float) == 0); // any strides, e.g. a permuted view
     GGML_ASSERT(table->ne[0] == q->ne[2] && table->ne[1] > 0 && table->ne[2] == q->ne[1]*q->ne[3] && table->ne[3] == 1);
     GGML_ASSERT(indices->type == GGML_TYPE_I32 && ggml_is_contiguous(indices) && ggml_is_matrix(indices));
     GGML_ASSERT(indices->ne[0] == mask->ne[0] && indices->ne[1] == table->ne[2]);
