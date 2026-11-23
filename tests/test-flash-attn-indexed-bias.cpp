@@ -4,18 +4,23 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <utility>
 #include <vector>
 
-static void test_indexed_bias(ggml_backend_t backend, int width, bool use_rows, int n_query, int cells = 768, bool positions = false) {
+static void test_indexed_bias(ggml_backend_t backend, int width, bool use_rows, int n_query, int cells = 768, bool positions = false, bool mask_pos = false, ggml_type kv_type = GGML_TYPE_F16) {
+    GGML_ASSERT(!mask_pos || (positions && !use_rows));
     constexpr int heads = 6, kv_heads = 2, streams = 2, bins = 17;
     const int cols = use_rows ? std::min(512, cells) : cells;
 
     ggml_context * ctx = ggml_init({32*ggml_tensor_overhead() + ggml_graph_overhead(), nullptr, true});
     auto * q = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, width, n_query, heads, streams);
-    auto * k = ggml_new_tensor_4d(ctx, GGML_TYPE_F16, width, cells, kv_heads, use_rows ? 1 : streams);
+    // quantized K/V: the test data (one value per K row, constant V rows) is exact in q4_0, see GGML_CUDA_FATTN_KV_CHUNK
+    auto * k = ggml_new_tensor_4d(ctx, kv_type, width, cells, kv_heads, use_rows ? 1 : streams);
     auto * v = ggml_dup_tensor(ctx, k);
-    auto * mask = ggml_new_tensor_4d(ctx, GGML_TYPE_F16, cols, n_query, 1, streams);
+    // mask_pos: no mask tensor, the kernel derives the causal mask from the positions
+    auto * mask = mask_pos ? nullptr : ggml_new_tensor_4d(ctx, GGML_TYPE_F16, cols, n_query, 1, streams);
     auto * rows = use_rows ? ggml_new_tensor_2d(ctx, GGML_TYPE_I32, cols, streams) : nullptr;
     auto * table = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, heads, bins, n_query*streams);
     auto * indices = ggml_new_tensor_2d(ctx, GGML_TYPE_I32, cols, n_query*streams);
@@ -25,14 +30,20 @@ static void test_indexed_bias(ggml_backend_t backend, int width, bool use_rows, 
     auto * out = ggml_flash_attn_ext_rows(ctx, q, k, v, mask, rows, 1.0f/sqrtf(width), 0, 0);
     ggml_flash_attn_ext_add_sinks(out, sinks);
     const bool supports_plain = ggml_backend_supports_op(backend, out);
-    ggml_flash_attn_ext_add_indexed_bias(out, table, indices);
-    GGML_ASSERT(ggml_flash_attn_ext_has_indexed_bias(out));
-    ggml_flash_attn_ext_add_indexed_bias(out, nullptr, nullptr);
-    GGML_ASSERT(!ggml_flash_attn_ext_has_indexed_bias(out) && !out->src[6] && !out->src[7]);
-    GGML_ASSERT(ggml_backend_supports_op(backend, out) == supports_plain);
+    if (!mask_pos) {
+        ggml_flash_attn_ext_add_indexed_bias(out, table, indices);
+        GGML_ASSERT(ggml_flash_attn_ext_has_indexed_bias(out));
+        ggml_flash_attn_ext_add_indexed_bias(out, nullptr, nullptr);
+        GGML_ASSERT(!ggml_flash_attn_ext_has_indexed_bias(out) && !out->src[6] && !out->src[7]);
+        GGML_ASSERT(ggml_backend_supports_op(backend, out) == supports_plain);
+    }
     if (positions) {
         ggml_flash_attn_ext_add_position_bias(out, table, posit);
         GGML_ASSERT(ggml_flash_attn_ext_has_indexed_bias(out) && ggml_flash_attn_ext_bias_from_positions(out));
+        if (mask_pos) {
+            ggml_flash_attn_ext_set_mask_from_positions(out);
+        }
+        GGML_ASSERT(ggml_flash_attn_ext_mask_from_positions(out) == mask_pos);
     } else {
         ggml_flash_attn_ext_add_indexed_bias(out, table, indices);
         GGML_ASSERT(!ggml_flash_attn_ext_bias_from_positions(out));
@@ -101,12 +112,15 @@ static void test_indexed_bias(ggml_backend_t backend, int width, bool use_rows, 
                     } else {
                         idx[i] = (c + 3*query) % bins;
                     }
-                    const bool visible = (s != 1 || j != 0) && cell >= 0 && (c + j) % 7 != 0;
-                    visibility[i] = ggml_fp32_to_fp16(visible ? 0.25f : -INFINITY);
+                    const int pc = positions ? pos[(2*s + 0)*cols + c] : 0;
+                    const bool visible = mask_pos ? cell >= 0 && pc >= 0 && pc <= pos[(2*s + 1)*cols + j] :
+                        (s != 1 || j != 0) && cell >= 0 && (c + j) % 7 != 0;
+                    const float m_mask = mask_pos ? 0.0f : 0.25f;
+                    visibility[i] = ggml_fp32_to_fp16(visible ? m_mask : -INFINITY);
                     if (visible) {
                         const int vk = (use_rows ? 0 : s)*kv_heads + h/(heads/kv_heads);
                         const double qk = 4.0*ggml_fp16_to_fp32(keys[(vk*cells + cell)*width])/sqrt(width);
-                        const float m = 0.25f + biases[(query*bins + idx[i])*heads + h];
+                        const float m = m_mask + biases[(query*bins + idx[i])*heads + h];
                         const double weight = exp(qk + ggml_fp16_to_fp32(ggml_fp32_to_fp16(m)));
                         weighted += weight*ggml_fp16_to_fp32(values[(vk*cells + cell)*width]);
                         sum += weight;
@@ -117,9 +131,23 @@ static void test_indexed_bias(ggml_backend_t backend, int width, bool use_rows, 
         }
     }
     ggml_backend_tensor_set(q, queries.data(), 0, ggml_nbytes(q));
-    ggml_backend_tensor_set(k, keys.data(), 0, ggml_nbytes(k));
-    ggml_backend_tensor_set(v, values.data(), 0, ggml_nbytes(v));
-    ggml_backend_tensor_set(mask, visibility.data(), 0, ggml_nbytes(mask));
+    if (kv_type == GGML_TYPE_F16) {
+        ggml_backend_tensor_set(k, keys.data(), 0, ggml_nbytes(k));
+        ggml_backend_tensor_set(v, values.data(), 0, ggml_nbytes(v));
+    } else {
+        for (auto [t, src] : { std::make_pair(k, &keys), std::make_pair(v, &values) }) {
+            std::vector<float> f32(src->size());
+            for (size_t i = 0; i < f32.size(); ++i) {
+                f32[i] = ggml_fp16_to_fp32((*src)[i]);
+            }
+            std::vector<uint8_t> q(ggml_nbytes(t));
+            ggml_quantize_chunk(kv_type, f32.data(), q.data(), 0, f32.size()/width, width, nullptr);
+            ggml_backend_tensor_set(t, q.data(), 0, q.size());
+        }
+    }
+    if (mask) {
+        ggml_backend_tensor_set(mask, visibility.data(), 0, ggml_nbytes(mask));
+    }
     ggml_backend_tensor_set(table, biases.data(), 0, ggml_nbytes(table));
     ggml_backend_tensor_set(sinks, sink_logits, 0, sizeof(sink_logits));
     if (positions) {
@@ -137,7 +165,7 @@ static void test_indexed_bias(ggml_backend_t backend, int width, bool use_rows, 
         GGML_ASSERT(std::isfinite(output[i]));
         max_error = std::max(max_error, fabsf(output[i] - expected[i/width]));
     }
-    printf("%s: width=%d, rows=%d, queries=%d, cells=%d, positions=%d, max error=%g\n", ggml_backend_name(backend), width, use_rows, n_query, cells, positions, max_error);
+    printf("%s: width=%d, rows=%d, queries=%d, cells=%d, positions=%d, mask_pos=%d, kv=%s, max error=%g\n", ggml_backend_name(backend), width, use_rows, n_query, cells, positions, mask_pos, ggml_type_name(kv_type), max_error);
     GGML_ASSERT(max_error < 0.001f);
     ggml_backend_buffer_free(buf);
     ggml_free(ctx);
@@ -157,6 +185,13 @@ int main() {
                 test_indexed_bias(backend, width, true, n_query);
                 test_indexed_bias(backend, width, false, n_query, 768, true);
                 test_indexed_bias(backend, width, true, n_query, 768, true);
+            }
+            for (int n_query : {1, 7, 64, 65, 256}) {
+                test_indexed_bias(backend, width, false, n_query, 768, true, true);
+                // q4_0 K/V: with GGML_CUDA_FATTN_KV_CHUNK=256 or 512 these run in chunks
+                test_indexed_bias(backend, width, false, n_query, 768, false, false, GGML_TYPE_Q4_0);
+                test_indexed_bias(backend, width, false, n_query, 768, true, false, GGML_TYPE_Q4_0);
+                test_indexed_bias(backend, width, false, n_query, 768, true, true, GGML_TYPE_Q4_0);
             }
         }
         ggml_backend_free(backend);

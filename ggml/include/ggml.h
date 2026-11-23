@@ -2312,6 +2312,12 @@ extern "C" {
 
     GGML_API bool ggml_flash_attn_ext_bias_from_positions(const struct ggml_tensor * a);
 
+    // With the position bias and no mask: flash attention derives the causal mask of one sequence from the same
+    // positions: query q sees mask column k if 0 <= cell_pos[k] <= query_pos[q]. Saves the [n_kv, n_query] f16 mask.
+    GGML_API void ggml_flash_attn_ext_set_mask_from_positions(struct ggml_tensor * a);
+
+    GGML_API bool ggml_flash_attn_ext_mask_from_positions(const struct ggml_tensor * a);
+
     // TODO: needs to be adapted to ggml_flash_attn_ext
     GGML_API struct ggml_tensor * ggml_flash_attn_back(
             struct ggml_context * ctx,

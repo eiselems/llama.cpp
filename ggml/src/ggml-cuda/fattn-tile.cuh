@@ -640,7 +640,8 @@ static __device__ __forceinline__ void flash_attn_tile_iter(
 
             if (!oob_check || i_KQ < k_VKQ_sup) {
                 const int k = k_VKQ_0 + i_KQ;
-                float m = (ncols2 > 1 || mask) ? __half2float(mask[(int64_t) j*stride_mask + k]) : 0.0f;
+                float m = bias.mask_from_positions ? fattn_mask_from_positions(bias, sequence, j, k) :
+                    (ncols2 > 1 || mask) ? __half2float(mask[(int64_t) j*stride_mask + k]) : 0.0f;
                 if constexpr (ncols2 == 1 && (DKQ == 64 || DKQ == 128)) {
                     if (bias.table) {
                         const int64_t query = (int64_t) sequence*ne01.z + j;
@@ -1108,18 +1109,23 @@ static __global__ void flash_attn_tile(
         }
 
         float scale = 1.0f;
+        float2 meta_j = make_float2(KQ_max[jc0], KQ_sum[jc0]); // KV chunks: KQ max and rowsum of the normalized result
         if (gridDim.y == 1) {
             if (bias.table && sinks) {
                 const float sink = ((const float *) sinks)[head0 + c];
                 const float kq_max = fmaxf(KQ_max[jc0], sink);
                 const float kq_scale = expf(KQ_max[jc0] - kq_max);
                 scale = kq_scale/(KQ_sum[jc0]*kq_scale + expf(sink - kq_max));
+                meta_j = make_float2(kq_max, KQ_sum[jc0]*kq_scale + expf(sink - kq_max));
             } else {
                 scale = 1.0f/KQ_sum[jc0];
             }
         }
 
         const int j_dst_unrolled = ((sequence*int(ne01.z) + col_Q_0 + j)*ne02 + head0 + c)*gridDim.y + blockIdx.y;
+        if (gridDim.y == 1 && bias.chunk_meta && threadIdx.x == 0) {
+            bias.chunk_meta[j_dst_unrolled] = meta_j;
+        }
 
 #ifdef FAST_FP16_AVAILABLE
         constexpr int cpy_ne_D = cpy_ne/2 < (DVp/2)/warp_size ? cpy_ne/2 : (DVp/2)/warp_size;

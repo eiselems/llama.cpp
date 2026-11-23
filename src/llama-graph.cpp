@@ -37,6 +37,13 @@ static bool llama_attn_bias_positions() {
     return v;
 }
 
+// LLAMA_ATTN_MASK_POSITIONS=1 (with LLAMA_ATTN_BIAS_POSITIONS): full attention layers of ubatches > 32 tokens get no
+// [n_kv, n_tokens] mask, flash attention derives the causal mask from the bias positions (512 MiB less at 128k, ub 2048)
+static bool llama_attn_mask_positions() {
+    static const bool v = [] { const char * e = getenv("LLAMA_ATTN_MASK_POSITIONS"); return e && atoi(e) != 0; }();
+    return v && llama_attn_bias_positions();
+}
+
 static ggml_tensor * build_attn_inp_kq_mask(
         ggml_context * ctx,
         const llama_kv_cache_context * mctx,
@@ -3227,6 +3234,9 @@ ggml_tensor * llm_graph_context::build_attn_mha(
             const bool bias_pos = llama_attn_bias_positions(); // see build_inp_mem_hybrid_iswa_rel
             if (bias_pos) {
                 ggml_flash_attn_ext_add_position_bias(cur, bias_table, bias_indices);
+                if (!kq_mask) {
+                    ggml_flash_attn_ext_set_mask_from_positions(cur);
+                }
             } else {
                 ggml_flash_attn_ext_add_indexed_bias(cur, bias_table, bias_indices);
             }
@@ -4526,7 +4536,11 @@ ggml_tensor * llm_graph_context::build_attn(
 
     ggml_tensor * indices = is_swa ? inp->self_rel_pos_swa : inp->self_rel_pos;
 
-    return build_attn_iswa_impl(*this, inp_attn, wo, wo_b, wo_s, q_cur, k_cur, v_cur, nullptr, attn_mask.raw, attn_mask.rows,
+    // one sequence per stream, causal, no row lists: the mask follows from the positions
+    const bool mask_pos = llama_attn_mask_positions() && !is_swa && bias_table && !attn_mask.rows && n_tokens > 32 &&
+        cparams.causal_attn && (cparams.n_seq_max == 1 || !cparams.kv_unified);
+
+    return build_attn_iswa_impl(*this, inp_attn, wo, wo_b, wo_s, q_cur, k_cur, v_cur, nullptr, mask_pos ? nullptr : attn_mask.raw, attn_mask.rows,
             sinks, nullptr, kq_scale, il, bias_table, indices);
 }
 
