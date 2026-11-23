@@ -1765,7 +1765,65 @@ static bool ggml_backend_buft_is_cuda_host(ggml_backend_buffer_type_t buft) {
     return buft->iface.get_name == ggml_backend_cuda_host_buffer_type_name;
 }
 
+#if defined(__linux__)
+#include <sys/mman.h>
+#include <mutex>
+#include <unordered_map>
+
+// GGML_CUDA_HOST_HUGEPAGES=1: pinned host buffers from anonymous memory with transparent huge pages, registered with CUDA,
+// instead of cudaMallocHost (4 KiB pages): fewer TLB misses when the CPU reads them (MoE experts kept in host memory)
+static bool ggml_cuda_host_hugepages() {
+    static const bool v = [] { const char * e = getenv("GGML_CUDA_HOST_HUGEPAGES"); return e && atoi(e) != 0; }();
+    return v;
+}
+
+static std::mutex ggml_cuda_host_huge_mutex;
+struct ggml_cuda_host_huge_map { void * raw; size_t mapped; };
+static std::unordered_map<void *, ggml_cuda_host_huge_map> ggml_cuda_host_huge; // registered buffer -> its mapping
+
+static void * ggml_cuda_host_malloc_huge(size_t size) {
+    constexpr size_t huge = 2u << 20;
+    const size_t mapped = (size + huge - 1) / huge * huge + huge;
+    void * raw = mmap(nullptr, mapped, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+    if (raw == MAP_FAILED) {
+        return nullptr;
+    }
+    // 2 MiB aligned start, the head and the tail beyond the size stay mapped and are unmapped with the rest
+    void * ptr = (void *) (((uintptr_t) raw + huge - 1) / huge * huge);
+    madvise(ptr, (size + huge - 1) / huge * huge, MADV_HUGEPAGE);
+    const cudaError_t err = cudaHostRegister(ptr, size, cudaHostRegisterPortable);
+    if (err != cudaSuccess) {
+        (void) cudaGetLastError();
+        munmap(raw, mapped);
+        GGML_LOG_WARN("%s: cudaHostRegister of %.2f MiB failed: %s, using cudaMallocHost\n", __func__, size/1024.0/1024.0, cudaGetErrorString(err));
+        return nullptr;
+    }
+    std::lock_guard<std::mutex> lock(ggml_cuda_host_huge_mutex);
+    ggml_cuda_host_huge[ptr] = { raw, mapped };
+    return ptr;
+}
+
+// true if ptr was a huge page buffer (now freed)
+static bool ggml_cuda_host_free_huge(void * ptr) {
+    std::lock_guard<std::mutex> lock(ggml_cuda_host_huge_mutex);
+    auto it = ggml_cuda_host_huge.find(ptr);
+    if (it == ggml_cuda_host_huge.end()) {
+        return false;
+    }
+    const ggml_cuda_host_huge_map m = it->second;
+    ggml_cuda_host_huge.erase(it);
+    CUDA_CHECK(cudaHostUnregister(ptr));
+    munmap(m.raw, m.mapped);
+    return true;
+}
+#endif
+
 static void ggml_backend_cuda_host_buffer_free_buffer(ggml_backend_buffer_t buffer) {
+#if defined(__linux__)
+    if (ggml_cuda_host_free_huge(buffer->context)) {
+        return;
+    }
+#endif
     CUDA_CHECK(cudaFreeHost(buffer->context));
 }
 
@@ -1773,6 +1831,14 @@ static void * ggml_cuda_host_malloc(size_t size) {
     if (ggml_cuda_pinned_memory_disabled()) {
         return nullptr;
     }
+
+#if defined(__linux__)
+    if (ggml_cuda_host_hugepages()) {
+        if (void * p = ggml_cuda_host_malloc_huge(size)) {
+            return p;
+        }
+    }
+#endif
 
     void * ptr = nullptr;
     cudaError_t err = cudaMallocHost((void **) &ptr, size);
