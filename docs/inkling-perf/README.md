@@ -14,6 +14,7 @@ checks are recorded. Full experiment log and status: [PLAN.md](PLAN.md); ceiling
 | **max prefill (IQ4_NL)** | **S19** | 890 / **1,080** (29.7k: **1,055**) | 36.7 | 7.49 GiB | `scripts/inkling/serve.sh start S19` |
 | **max decode (IQ4_NL)** | **S20** | 503 / 578 (29.7k: 572) | **39.5** | 7.48 GiB | `scripts/inkling/serve.sh start S20` |
 | **128k context (IQ4_NL)** | **S21** | 4k prompt: ~900 | 29.5 at 4k ctx, 34.5 short | 7.48 GiB (smoke) | `scripts/inkling/serve.sh start S21` |
+| **32k, max prefill (since 2026-11-23)** | **S24** | 871 / **1,070** (29.7k: **1,073**) | 36.1 | 7.6 GiB | `scripts/inkling/serve.sh start S24` |
 | **128k, decode first (since 2026-11-23)** | **S22** | 655 / 861 (94k: **760**) | **36.5** (after 94k: 18.4) | 7.6 GiB | `scripts/inkling/serve.sh start S22` |
 | **128k, prefill first (since 2026-11-23)** | **S23** | **834 / 1,019** (94k: **831**) | 32.5 (after 94k: 18.8) | 7.6 GiB | `scripts/inkling/serve.sh start S23` |
 

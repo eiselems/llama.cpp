@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # Renders docs/inkling-perf/progress.svg from docs/inkling-perf/progress.tsv (stdlib only, GitHub renders the SVG inline).
 #
-# progress.tsv columns: step  commit  change  vram_mib  pp1k  pp5k  tg1k  tg5k  args
+# progress.tsv columns: step  commit  change  vram_mib  pp1k  pp5k  tg1k  tg5k  args  [ctx]
+# ctx (optional, default 32k): rows with another context are a separate line segment after a divider, not a step.
 # Two panels share the x axis (one row per step): prefill on top, decode below. They have different
 # scales, so they get their own y axes instead of one dual-axis chart.
 import csv, html, os, sys
@@ -18,6 +19,14 @@ H = TOP + 30 + 2*PANEL_H + GAP + X_LAB
 plot_w = W - PAD_L - PAD_R
 n = len(rows)
 xs = [PAD_L + (plot_w*(i + 0.5)/n) for i in range(n)]
+ctx = [(r.get('ctx') or '32k').strip() for r in rows]
+# runs of rows with the same context: each is its own line segment
+segs = []
+for i, c in enumerate(ctx):
+    if segs and segs[-1][0] == c:
+        segs[-1][1].append(i)
+    else:
+        segs.append((c, [i]))
 
 # palette: categorical slots 1-2, light + dark (validated: CVD dE >= 24 in both modes)
 CSS = """
@@ -63,7 +72,7 @@ out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W
        f'aria-label="Inkling-2-Mini prefill and decode speed per optimization step">',
        f'<style>{CSS}</style>', f'<rect class="bg" width="{W}" height="{H}"/>',
        f'<text class="title" x="{PAD_L}" y="26">Inkling-2-Mini on RTX 3070 8 GB - llama.cpp fork, per optimization step</text>',
-       f'<text x="{PAD_L}" y="44">tokens/s, higher is better. UD-Q4_K_M, 32k ctx, q8_0 KV (q4_0 from S10); IQ4_NL from Q9; S21c-S23: 128k ctx. From B10: bench.py, decode = median of 6 prompts, 2nd decode line = after a 30k prompt (S21c-S23: 94k).</text>']
+       f'<text x="{PAD_L}" y="44">tokens/s, higher is better. UD-Q4_K_M, 32k ctx, q8_0 KV (q4_0 from S10); IQ4_NL from Q9. From B10: bench.py, decode = median of 6 prompts, 2nd decode line = after a 30k prompt. 128k block: after a 94k prompt.</text>']
 
 def panel(y0, title, keys, names, unit_note):
     vals = [f(r[k]) for r in rows for k in keys]
@@ -75,26 +84,36 @@ def panel(y0, title, keys, names, unit_note):
         cls = 'base' if i == 0 else 'grid'
         out.append(f'<line class="{cls}" x1="{PAD_L}" x2="{PAD_L + plot_w}" y1="{y(v):.1f}" y2="{y(v):.1f}"/>')
         out.append(f'<text class="tick" x="{PAD_L - 8}" y="{y(v) + 4:.1f}" text-anchor="end">{v:g}</text>')
+    # divider before each context block after the first
+    for c, idx in segs[1:]:
+        xd = xs[idx[0]] - plot_w/n/2
+        out.append(f'<line class="base" x1="{xd:.1f}" x2="{xd:.1f}" y1="{y0 - 4}" y2="{y0 + PANEL_H}" stroke-dasharray="4 4"/>')
+        out.append(f'<text class="ptitle" x="{xd + 6:.1f}" y="{y0 + 12}" style="font-size:12px">{html.escape(c)} context</text>')
     for si, (k, name) in enumerate(zip(keys, names), start=1):
-        pts = [(xs[i], y(f(r[k]))) for i, r in enumerate(rows) if f(r[k]) is not None]
-        if len(pts) > 1:
-            out.append(f'<polyline class="l{si}" points="' + ' '.join(f'{px:.1f},{py:.1f}' for px, py in pts) + '"/>')
+        for c, idx in segs:
+            pts = [(xs[i], y(f(rows[i][k]))) for i in idx if f(rows[i][k]) is not None]
+            if len(pts) > 1:
+                out.append(f'<polyline class="l{si}" points="' + ' '.join(f'{px:.1f},{py:.1f}' for px, py in pts) + '"/>')
         for i, r in enumerate(rows):
             v = f(r[k])
             if v is None:
                 continue
             tip = html.escape(f"{r['step']} {r['change']} ({r['commit']}): {name} {v:g} t/s, VRAM {r['vram_mib']} MiB")
             out.append(f'<circle class="m{si}" cx="{xs[i]:.1f}" cy="{y(v):.1f}" r="5"><title>{tip}</title></circle>')
-        # direct label at the last point: the series name and its current value
-        last = max(i for i, r in enumerate(rows) if f(r[k]) is not None)
-        lv = f(rows[last][k])
-        other = [f(rows[last][k2]) for k2 in keys if k2 != k and f(rows[last][k2]) is not None]
-        above = not other or lv >= other[0]
-        out.append(f'<text class="val" x="{xs[last] + 10:.1f}" y="{y(lv) + (-6 if above else 14):.1f}">{lv:g}</text>')
-    # first-to-last gain for series 1
-    first = next(f(r[keys[0]]) for r in rows if f(r[keys[0]]) is not None)
-    lastv = [f(r[keys[0]]) for r in rows if f(r[keys[0]]) is not None][-1]
-    out.append(f'<text class="tick" x="{PAD_L + plot_w}" y="{y0 - 10}" text-anchor="end">{names[0]}: {first:g} -> {lastv:g} ({lastv/first:.1f}x){unit_note}</text>')
+        # direct label at the last point of each segment
+        for c, idx in segs:
+            vis = [i for i in idx if f(rows[i][k]) is not None]
+            if not vis:
+                continue
+            last = vis[-1]
+            lv = f(rows[last][k])
+            other = [f(rows[last][k2]) for k2 in keys if k2 != k and f(rows[last][k2]) is not None]
+            above = not other or lv >= other[0]
+            out.append(f'<text class="val" x="{xs[last] + 10:.1f}" y="{y(lv) + (-6 if above else 14):.1f}">{lv:g}</text>')
+    # first-to-last gain for series 1, within the first context block (like for like)
+    c0, idx0 = segs[0]
+    v0 = [f(rows[i][keys[0]]) for i in idx0 if f(rows[i][keys[0]]) is not None]
+    out.append(f'<text class="tick" x="{PAD_L + plot_w}" y="{y0 - 10}" text-anchor="end">{names[0]} ({c0}): {v0[0]:g} -> {v0[-1]:g} ({v0[-1]/v0[0]:.1f}x){unit_note}</text>')
 
 y_pp = TOP + 30
 panel(y_pp, 'Prefill (prompt processing)', ['pp1k', 'pp5k'], ['1k prompt', '4.8k prompt'], '')
