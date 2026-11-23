@@ -26,3 +26,4 @@
 | T10 | S19 cache 2650 -> 2900 (IQ4_NL frees VRAM) | `4b939d81` | 7670 | 890 | 1080 | 36.7 | 28.7 |
 | S19c | S19 as before 2026-11-23 (auto cache, half-life 128) | `edc5907e` | 7782 | 865.5 | 1058.9 | 35.09 | 26.09 |
 | S24 | + half-life 64, mask from positions, K/V chunks (32k) | `edc5907e` | 7772 | 870.9 | 1069.7 | 36.05 | 27.42 |
+| S25 | + host experts on huge pages (THP) | `c0fe97986` | 7782 | 855.9 | 1040.8 | 35.81 | 26.12 |

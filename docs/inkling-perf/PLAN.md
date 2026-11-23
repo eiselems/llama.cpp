@@ -317,3 +317,13 @@ The prediction alone (DRY=1) costs 1-2 %. nsys (N = 4 vs 0): kernel time the sam
 Conclusion: an upload and a CPU computation of a missed expert read the same ~3.3 MB from DRAM, so on this dual-channel
 desktop the trade saves nothing, and the 27 % wrong predictions add PCIe/DRAM traffic. The papers that gain from it run
 on servers with many memory channels. Kept opt-in, off by default (no effect when off: S24 37.4-37.75 t/s).
+
+### 2026-11-23: host experts on huge pages (S25, accepted) and skipping low-weight misses (opt-in, not used)
+
+GGML_CUDA_HOST_HUGEPAGES=1: the pinned host buffer comes from anonymous memory with THP + cudaHostRegister instead of
+cudaMallocHost (4 KiB pages). bench.py --long 38000, ctl / huge / ctl / huge / ctl: c1 34.91 / **35.67** / 34.91 /
+**35.95** / 34.59 (+2.6 %), prefill unchanged. Results identical (exact). 12.6 of ~16 GB got huge pages.
+
+LLAMA_MOE_CACHE_SKIP=f (decode: a miss with router weight < f of the sum is not computed): f = 0.10 gave c1 41.06 vs
+35.0-35.2 (+17 %), but KLD 0.019 / same top 94.6 % / PPL +1.0 % (llama-perplexity -ub 1, decode path); f = 0.05: +3 %,
+KLD 0.015. A quality trade-off, so it stays off (the user chose exact optimizations only).
