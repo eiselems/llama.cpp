@@ -484,6 +484,8 @@ struct llama_moe_cache::impl {
     int32_t predict_max = 0;
     // LLAMA_MOE_CACHE_SKIP=f: in decode, misses with a router weight below f of the token's weight sum are not computed
     float skip_thr = 0.0f;
+    // LLAMA_MOE_CACHE_PREFETCHED_IDS=0: read the selected experts from the device even if the scheduler has a host copy
+    bool use_prefetched = true;
     std::vector<ggml_tensor *> w_of;   // [n_layer] router weights of the selected experts, nullptr if none
     std::vector<float> w_ids;
     size_t n_skipped = 0;
@@ -551,6 +553,9 @@ struct llama_moe_cache::impl {
         }
         pred_of.assign(model.layers.size(), nullptr);
         w_of.assign(model.layers.size(), nullptr);
+        if (const char * v = getenv("LLAMA_MOE_CACHE_PREFETCHED_IDS"); v != nullptr) {
+            use_prefetched = atoi(v) != 0;
+        }
         if (const char * v = getenv("LLAMA_MOE_CACHE_SKIP"); v != nullptr && atof(v) > 0.0) {
             skip_thr = (float) atof(v);
         }
@@ -987,7 +992,7 @@ struct llama_moe_cache::impl {
         return n;
     }
 
-    bool copy(ggml_backend_t backend, const ggml_tensor * src, ggml_tensor * dst, ggml_cgraph * graph) {
+    bool copy(ggml_backend_t backend, const ggml_tensor * src, ggml_tensor * dst, ggml_cgraph * graph, ggml_backend_sched_t sched) {
         const auto it = layer_of.find(src);
         if (it == layer_of.end()) {
             return false;
@@ -1025,7 +1030,14 @@ struct llama_moe_cache::impl {
         const int32_t n_used = (int32_t) sel->src[0]->ne[0];
 
         ids.resize(ggml_nelements(sel));
-        ggml_backend_tensor_get_async(backend, sel, ids.data(), 0, ggml_nbytes(sel));
+        // the scheduler usually read them already, into pinned host memory for the CPU experts: a synchronous read of a few
+        // bytes into pageable memory costs ~7 us per layer
+        const void * sel_host = sched != nullptr && use_prefetched ? ggml_backend_sched_get_prefetched(sched, sel) : nullptr;
+        if (sel_host != nullptr) {
+            memcpy(ids.data(), sel_host, ggml_nbytes(sel));
+        } else {
+            ggml_backend_tensor_get_async(backend, sel, ids.data(), 0, ggml_nbytes(sel));
+        }
         // the experts predicted for the next application, computed with the selected ones
         const ggml_tensor * pred = predict_max > 0 && sel->src[0]->ne[1] == 1 ? pred_of[il] : nullptr;
         if (pred != nullptr && pred->buffer != nullptr && !ggml_backend_buffer_is_host(pred->buffer) && pred->type == GGML_TYPE_I32) {
@@ -1446,8 +1458,8 @@ bool llama_moe_cache::predict_enabled() const {
     return pimpl->predict_max > 0;
 }
 
-bool llama_moe_cache::copy(ggml_backend_t backend, const ggml_tensor * src, ggml_tensor * dst, ggml_cgraph * graph) {
-    return pimpl->copy(backend, src, dst, graph);
+bool llama_moe_cache::copy(ggml_backend_t backend, const ggml_tensor * src, ggml_tensor * dst, ggml_cgraph * graph, ggml_backend_sched_t sched) {
+    return pimpl->copy(backend, src, dst, graph, sched);
 }
 
 bool llama_moe_cache::has_expert(const ggml_tensor * w, int64_t e) const {

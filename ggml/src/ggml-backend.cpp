@@ -1274,6 +1274,13 @@ struct ggml_backend_sched {
     int n_prefetched;
     int prefetch_split;     // the split that reads the prefetched inputs
     int prefetch_backend_id; // the backend that copies them
+
+    // asynchronous copies of host (CPU split) results to a device, see ggml_backend_sched_copy_input
+    // the host memory they read must not be written until they are done: waited for before the next CPU split and before prefetches
+    ggml_backend_event_t h2d_events[GGML_SCHED_MAX_BACKENDS]; // created on first use
+    bool                 h2d_tried [GGML_SCHED_MAX_BACKENDS];
+    bool                 h2d_pending[GGML_SCHED_MAX_BACKENDS];
+    int                  h2d_async; // GGML_SCHED_ASYNC_H2D, default 1
 };
 
 #define hash_id(tensor) ggml_hash_find_or_insert(&sched->hash_set, tensor)
@@ -2116,6 +2123,42 @@ static bool ggml_backend_sched_is_host_weight(const struct ggml_tensor * t) {
         ggml_backend_buffer_is_host(t->buffer);
 }
 
+// wait for the asynchronous host to device copies, before host memory they may read is written
+static void ggml_backend_sched_wait_h2d(ggml_backend_sched_t sched) {
+    for (int b = 0; b < sched->n_backends; b++) {
+        if (sched->h2d_pending[b]) {
+            ggml_backend_event_synchronize(sched->h2d_events[b]);
+            sched->h2d_pending[b] = false;
+        }
+    }
+}
+
+const void * ggml_backend_sched_get_prefetched(ggml_backend_sched_t sched, const struct ggml_tensor * tensor) {
+    if (tensor == NULL || tensor->data == NULL || !ggml_is_contiguous(tensor)) {
+        return NULL;
+    }
+    const struct ggml_tensor * base = tensor->view_src ? tensor->view_src : tensor;
+    for (int i = 0; i < sched->n_prefetched; i++) {
+        struct ggml_tensor * in = sched->prefetched[i];
+        const struct ggml_tensor * in_base = in->view_src ? in->view_src : in;
+        if (in_base != base || !ggml_is_contiguous(in)) {
+            continue;
+        }
+        const char * a = (const char *) in->data;
+        const char * t = (const char *) tensor->data;
+        if (t < a || t + ggml_nbytes(tensor) > a + ggml_nbytes(in)) {
+            continue;
+        }
+        struct ggml_tensor * cpy = tensor_copy(in, sched->splits[sched->prefetch_split].backend_id, sched->cur_copy);
+        if (cpy == NULL || cpy->data == NULL) {
+            return NULL;
+        }
+        ggml_backend_event_synchronize(sched->prefetch_events[sched->prefetch_backend_id]);
+        return (const char *) cpy->data + (t - a);
+    }
+    return NULL;
+}
+
 static void ggml_backend_sched_copy_input(ggml_backend_sched_t sched, struct ggml_backend_sched_split * split, struct ggml_tensor * input) {
     const int split_backend_id = split->backend_id;
     ggml_backend_t split_backend = sched->backends[split_backend_id];
@@ -2159,6 +2202,25 @@ static void ggml_backend_sched_copy_input(ggml_backend_sched_t sched, struct ggm
     // TODO: add public function to facilitate this, since applications do not have direct access to the backend interface
     if (!split_backend->iface.cpy_tensor_async || !split_backend->iface.cpy_tensor_async(input_backend, split_backend, input, input_cpy)) {
         ggml_backend_synchronize(input_backend);
+        // a result of a CPU split in host memory: copy without waiting for the copy, the host memory is not written until the
+        // copy is done (ggml_backend_sched_wait_h2d), the split backend reads it in stream order
+        if (sched->h2d_async && split_backend->iface.set_tensor_async != NULL &&
+                ggml_backend_dev_type(ggml_backend_get_device(input_backend)) == GGML_BACKEND_DEVICE_TYPE_CPU &&
+                input->buffer != NULL && ggml_backend_buffer_is_host(input->buffer) &&
+                input_cpy->buffer != NULL && !ggml_backend_buffer_is_host(input_cpy->buffer) &&
+                ggml_is_contiguous(input) && ggml_is_contiguous(input_cpy)) {
+            if (!sched->h2d_tried[split_backend_id]) {
+                sched->h2d_tried[split_backend_id]  = true;
+                sched->h2d_events[split_backend_id] = ggml_backend_event_new(split_backend->device);
+            }
+            if (sched->h2d_events[split_backend_id] != NULL) {
+                // the split backend has finished using input_cpy: waited for above (event wait or synchronize, in stream order)
+                ggml_backend_tensor_set_async(split_backend, input_cpy, input->data, 0, ggml_nbytes(input));
+                ggml_backend_event_record(sched->h2d_events[split_backend_id], split_backend);
+                sched->h2d_pending[split_backend_id] = true;
+                return;
+            }
+        }
         if (sched->events[split_backend_id][sched->cur_copy] != NULL) {
             ggml_backend_event_synchronize(sched->events[split_backend_id][sched->cur_copy]);
         } else {
@@ -2218,6 +2280,7 @@ static void ggml_backend_sched_prefetch_inputs(ggml_backend_sched_t sched, int s
             return;
         }
 
+        ggml_backend_sched_wait_h2d(sched);
         ggml_backend_tensor_get_async(backend, input, input_cpy->data, 0, ggml_nbytes(input));
         sched->prefetched[sched->n_prefetched++] = input;
     }
@@ -2239,6 +2302,11 @@ static enum ggml_status ggml_backend_sched_compute_splits(ggml_backend_sched_t s
         struct ggml_backend_sched_split * split = &splits[split_id];
         int split_backend_id = split->backend_id;
         ggml_backend_t split_backend = sched->backends[split_backend_id];
+
+        // a CPU split writes host memory, its inputs and results
+        if (ggml_backend_dev_type(ggml_backend_get_device(split_backend)) == GGML_BACKEND_DEVICE_TYPE_CPU) {
+            ggml_backend_sched_wait_h2d(sched);
+        }
 
         // ensure the previous split's async work has completed before we start
         // this split, the allocator may have reused buffer regions across splits
@@ -2335,6 +2403,10 @@ ggml_backend_sched_t ggml_backend_sched_new(
     sched->debug = GGML_SCHED_DEBUG ? atoi(GGML_SCHED_DEBUG) : 0;
 
     sched->debug_realloc = 0;
+    {
+        const char * v = getenv("GGML_SCHED_ASYNC_H2D");
+        sched->h2d_async = v ? atoi(v) : 1;
+    }
 #ifdef GGML_SCHED_NO_REALLOC
     sched->debug_realloc = 1;
 #endif
@@ -2400,6 +2472,7 @@ void ggml_backend_sched_free(ggml_backend_sched_t sched) {
             ggml_backend_event_free(sched->events[b][c]);
         }
         ggml_backend_event_free(sched->prefetch_events[b]);
+        ggml_backend_event_free(sched->h2d_events[b]);
     }
     ggml_gallocr_free(sched->galloc);
     ggml_free(sched->ctx);
@@ -2510,6 +2583,7 @@ void ggml_backend_sched_synchronize(ggml_backend_sched_t sched) {
     GGML_ASSERT(sched);
     for (int i = 0; i < sched->n_backends; i++) {
         ggml_backend_synchronize(sched->backends[i]);
+        sched->h2d_pending[i] = false;
     }
     if (!sched->is_alloc) {
         // if the graph is not already allocated, always use copy 0 after a synchronization
