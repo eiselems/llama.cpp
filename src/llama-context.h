@@ -58,6 +58,10 @@ struct llama_context {
     //   - etc.
     void sched_reserve();
 
+    // --moe-cache-mib auto: replaces the placeholder MoE cache by one that fills the free device memory, see llama_context_params::moe_cache_margin
+    void moe_cache_resize_auto();
+    static constexpr size_t moe_cache_auto_placeholder = 512ull*1024*1024;
+
     void synchronize();
 
     const llama_model   & get_model()   const;

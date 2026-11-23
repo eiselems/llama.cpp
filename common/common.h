@@ -618,6 +618,7 @@ struct common_params {
 
     size_t moe_cache_size      = 0;    // GPU cache size in bytes for the MoE experts kept in the CPU, split among the GPUs like the layers
     float  moe_cache_cpu_share = 0.0f; // share of the MoE cache misses computed on the CPU instead of uploaded
+    size_t moe_cache_margin    = 256ull*1024*1024; // moe_cache_size = LLAMA_MOE_CACHE_AUTO: device memory left free after the cache
 
     common_conversation_mode conversation_mode = COMMON_CONVERSATION_MODE_AUTO;
 
