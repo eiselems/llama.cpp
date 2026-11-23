@@ -134,8 +134,8 @@ def full_mib(trace, share):
 
 class ClassLRU:
     """moe_cache_lru, with its float32 rounding of the CRF"""
-    N_CLASS = 8
-    CRF_HALF_LIFE = 128.0  # tokens
+    N_CLASS = 7
+    CRF_HALF_LIFE = 64.0  # tokens, LLAMA_MOE_CACHE_HALF_LIFE (default 64)
 
     def __init__(self, layers, n_expert, n_slots):
         self.n_expert = n_expert

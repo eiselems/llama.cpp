@@ -27,8 +27,11 @@ namespace {
 // key_layer_of[il] is the layer whose keys, slot map, CRF and clock layer il uses: il itself, or with LLAMA_MOE_CACHE_DEDUP
 // the first layer of the group with the same expert tensors (the passes of a looped layer share one entry per expert)
 struct moe_cache_lru {
-    static constexpr int   n_class  = 8; // floor(log2(1/(1 - 2^(-1/crf_half_life)))) = 7, class of CRF_max for half-life of 128
-    static constexpr float crf_half_life = 128.0f; // tokens
+    static constexpr int n_class_max = 16;
+
+    // LLAMA_MOE_CACHE_HALF_LIFE (default 64 tokens; replays of Inkling 2 decode traces: 0.4-0.6 % fewer misses than 128)
+    float crf_half_life = 64.0f;
+    int   n_class       = 7; // floor(log2(1/(1 - 2^(-1/crf_half_life)))) + 1: class of CRF_max, plus one
 
     int32_t n_expert = 0;
     int32_t n_slots  = 0;
@@ -42,8 +45,8 @@ struct moe_cache_lru {
     // one LRU list per class, the head is the least recently used end
     std::vector<int32_t> prev;    // [n_slots] -1 at the ends
     std::vector<int32_t> next;    // [n_slots]
-    int32_t head[n_class];
-    int32_t tail[n_class];
+    int32_t head[n_class_max];
+    int32_t tail[n_class_max];
     std::vector<int8_t>  list_of; // [n_slots] class list of the slot
     int32_t n_filled = 0;         // slots that hold an expert
 
@@ -59,7 +62,10 @@ struct moe_cache_lru {
     std::vector<uint64_t> token_zero; // [n_tokens] zero slots used by each token
 
     void init(int32_t n_layer, int32_t n_expert, int32_t n_slots) {
-        GGML_ASSERT(n_class == (int) std::log2(1.0f/(1.0f - std::exp2(-1.0f/crf_half_life))) + 1);
+        if (const char * v = getenv("LLAMA_MOE_CACHE_HALF_LIFE"); v != nullptr && atof(v) > 0.0) {
+            crf_half_life = (float) atof(v);
+        }
+        n_class = std::clamp((int) std::log2(1.0f/(1.0f - std::exp2(-1.0f/crf_half_life))) + 1, 1, n_class_max);
         this->n_expert = n_expert;
         this->n_slots  = n_slots;
         this->empty    = n_slots;
