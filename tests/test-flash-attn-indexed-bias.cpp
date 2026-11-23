@@ -186,9 +186,9 @@ int main() {
                 test_indexed_bias(backend, width, false, n_query, 768, true);
                 test_indexed_bias(backend, width, true, n_query, 768, true);
             }
-            for (int n_query : {1, 7, 64, 65, 256}) {
+            for (int n_query : {1, 7, 33, 64, 65, 256}) {
                 test_indexed_bias(backend, width, false, n_query, 768, true, true);
-                // q4_0 K/V: with GGML_CUDA_FATTN_KV_CHUNK=256 or 512 these run in chunks
+                // q4_0 K/V: with GGML_CUDA_FATTN_KV_CHUNK=256 or 512 these run in chunks (more than 32 queries)
                 test_indexed_bias(backend, width, false, n_query, 768, false, false, GGML_TYPE_Q4_0);
                 test_indexed_bias(backend, width, false, n_query, 768, true, false, GGML_TYPE_Q4_0);
                 test_indexed_bias(backend, width, false, n_query, 768, true, true, GGML_TYPE_Q4_0);

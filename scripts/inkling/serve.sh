@@ -46,6 +46,9 @@ start)
         S19) MODEL=$IQ4NL; env=(LLAMA_EXPERT_PREFETCH=1 LLAMA_EXPERT_PREFETCH_SKIP=1 GGML_CUDA_FATTN_BIAS_MMA=1 LLAMA_ATTN_BIAS_POSITIONS=1); flags=(-ub 2048 --moe-cache-mib 2900) ;;  # S18 on IQ4_NL, cache +250 (T10)
         S20) MODEL=$IQ4NL; env=(LLAMA_EXPERT_PREFETCH=3 LLAMA_MOE_CACHE_ASYNC_FILL=1); flags=(-ub 512 --moe-cache-mib 4150) ;;   # S16 on IQ4_NL, cache +200 (T10)
         S21) MODEL=$IQ4NL; env=(GGML_CUDA_FATTN_BIAS_MMA=1 LLAMA_ATTN_BIAS_POSITIONS=1); flags=(-c 131072 -ub 2048 --moe-cache-mib 2400) ;;  # 128k context: S19 without prefetch (its 1 GiB staging does not fit), smaller cache
+        S21c) MODEL=$IQ4NL; env=(GGML_CUDA_FATTN_BIAS_MMA=1 LLAMA_ATTN_BIAS_POSITIONS=1 LLAMA_MOE_CACHE_HALF_LIFE=128); flags=(-c 131072 -ub 2048 --moe-cache-mib 2336) ;;  # S21 as before 2026-11-23 (half-life 128), cache that fits a ~790 MiB desktop
+        S22) MODEL=$IQ4NL; env=(GGML_CUDA_FATTN_BIAS_MMA=1 LLAMA_ATTN_BIAS_POSITIONS=1 LLAMA_ATTN_MASK_POSITIONS=1 GGML_CUDA_FATTN_KV_CHUNK=32768); flags=(-c 131072 -ub 2048 --moe-cache-mib auto) ;;  # 128k: S21 + auto cache + mask from positions + K/V chunks, no prefetch
+        S23) MODEL=$IQ4NL; env=(LLAMA_EXPERT_PREFETCH=1 LLAMA_EXPERT_PREFETCH_SKIP=1 GGML_CUDA_FATTN_BIAS_MMA=1 LLAMA_ATTN_BIAS_POSITIONS=1 LLAMA_ATTN_MASK_POSITIONS=1 GGML_CUDA_FATTN_KV_CHUNK=32768); flags=(-c 131072 -ub 2048 --moe-cache-mib auto) ;;  # 128k: S22 + prefetch (fits again)
         *)   echo "unknown preset $preset" >&2; exit 1 ;;
     esac
     # extra args after the preset override the preset (llama.cpp: the last flag wins); EXTRA_ENV adds env vars

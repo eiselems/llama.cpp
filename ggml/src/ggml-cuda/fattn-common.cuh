@@ -84,7 +84,8 @@ struct ggml_cuda_flash_attn_ext_f16_extra_data {
 };
 
 // GGML_CUDA_FATTN_KV_CHUNK=N (cells, a multiple of FATTN_KQ_STRIDE): convert quantized K/V to f16 N cells at a time and
-// merge the results of the chunks, so the f16 copies need N cells instead of the whole KV cache; 0 if not used for dst
+// merge the results of the chunks, so the f16 copies need N cells instead of the whole KV cache; 0 if not used for dst.
+// Only for > 32 queries: chunked decode is ~10 % slower at 40k ctx, and the small decode graph needs less memory anyway
 static inline int64_t ggml_cuda_fattn_kv_chunk(const ggml_tensor * dst) {
     static const int64_t chunk = [] {
         const char * e = getenv("GGML_CUDA_FATTN_KV_CHUNK");
@@ -94,7 +95,7 @@ static inline int64_t ggml_cuda_fattn_kv_chunk(const ggml_tensor * dst) {
     const ggml_tensor * K = dst->src[1];
     const ggml_tensor * V = dst->src[2];
     const bool V_is_K_view = V->view_src && (V->view_src == K || (V->view_src == K->view_src && V->view_offs == K->view_offs));
-    const bool ok = chunk > 0 && K->ne[1] > chunk && K->ne[1] % FATTN_KQ_STRIDE == 0 && !dst->src[5] && !V_is_K_view &&
+    const bool ok = chunk > 0 && dst->src[0]->ne[1] > 32 && K->ne[1] > chunk && K->ne[1] % FATTN_KQ_STRIDE == 0 && !dst->src[5] && !V_is_K_view &&
         K->type != GGML_TYPE_F16 && V->type != GGML_TYPE_F16 && ggml_get_op_params_i32(dst, 4) == 0;
     return ok ? chunk : 0;
 }
@@ -1235,8 +1236,22 @@ void launch_fattn_impl(const fattn_kv_chunk * ch,
         const size_t K_ts = ggml_type_size(K->type);
         const size_t V_ts = ggml_type_size(V->type);
         GGML_ASSERT(K->nb[0] == K_ts && V->nb[0] == V_ts);
-        K_to_fp16(K_data + ch->c0*nb11, ch->K_f16, K->ne[0], ch->n, K->ne[2], K->ne[3], nb11/K_ts, nb12/K_ts, nb13/K_ts, main_stream);
-        V_to_fp16(V_data + ch->c0*nb21, ch->V_f16, V->ne[0], ch->n, V->ne[2], V->ne[3], nb21/V_ts, nb22/V_ts, nb23/V_ts, main_stream);
+        // the cells of one head are contiguous if the rows are: then the faster contiguous conversion, once per head
+        auto convert = [&](const ggml_tensor * t, const char * data, half * out, size_t s1, size_t s2, size_t s3, to_fp16_nc_cuda_t to_fp16_nc) {
+            const size_t ts = ggml_type_size(t->type);
+            if (s1 == ggml_row_size(t->type, t->ne[0])) {
+                to_fp16_cuda_t to_fp16 = ggml_get_to_fp16_cuda(t->type);
+                for (int64_t i3 = 0; i3 < t->ne[3]; ++i3) {
+                    for (int64_t i2 = 0; i2 < t->ne[2]; ++i2) {
+                        to_fp16(data + ch->c0*s1 + i2*s2 + i3*s3, out + (i3*t->ne[2] + i2)*ch->n*t->ne[0], ch->n*t->ne[0], main_stream);
+                    }
+                }
+            } else {
+                to_fp16_nc(data + ch->c0*s1, out, t->ne[0], ch->n, t->ne[2], t->ne[3], s1/ts, s2/ts, s3/ts, main_stream);
+            }
+        };
+        convert(K, K_data, ch->K_f16, nb11, nb12, nb13, K_to_fp16);
+        convert(V, V_data, ch->V_f16, nb21, nb22, nb23, V_to_fp16);
         K_data = (const char *) ch->K_f16;
         nb11 = K->ne[0]*sizeof(half);
         nb12 = ch->n*nb11;
