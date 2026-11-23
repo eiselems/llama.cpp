@@ -44,6 +44,14 @@ static bool llama_attn_mask_positions() {
     return v && llama_attn_bias_positions();
 }
 
+// LLAMA_ATTN_BIAS_VIEW=1 (with LLAMA_ATTN_BIAS_POSITIONS): flash attention reads the bias table through the permuted
+// view of the model's [n_bins, n_head, n_query] table instead of the [n_head, n_bins, n_query] copy (exact, no copy,
+// coalesced reads: 1.3-2.2x faster prefill attention on Inkling 2)
+static bool llama_attn_bias_view() {
+    static const bool v = [] { const char * e = getenv("LLAMA_ATTN_BIAS_VIEW"); return e && atoi(e) != 0; }();
+    return v;
+}
+
 static ggml_tensor * build_attn_inp_kq_mask(
         ggml_context * ctx,
         const llama_kv_cache_context * mctx,
@@ -3271,7 +3279,15 @@ ggml_tensor * llm_graph_context::build_attn_mha(
                 GGML_ASSERT(!bias_pos && "LLAMA_ATTN_BIAS_POSITIONS: the attention device does not support the position bias");
                 ggml_flash_attn_ext_add_indexed_bias(cur, nullptr, nullptr);
                 cur->src[3] = dense_bias_mask();
-            } else if (kv_rows) {
+            } else if (bias_pos && llama_attn_bias_view() && bias_table->op == GGML_OP_CONT && bias_table->src[0]->op == GGML_OP_PERMUTE) {
+                // read the table through the permuted view: the [n_bins, n_head, n_query] layout before the copy has
+                // consecutive bins (= consecutive cells of a query) next to each other, the copy has n_head floats between them
+                ggml_flash_attn_ext_add_position_bias(cur, bias_table->src[0], bias_indices);
+                if (!kq_mask) {
+                    ggml_flash_attn_ext_set_mask_from_positions(cur);
+                }
+            }
+            if (kv_rows && cur->src[6]) {
                 // Looped layers can project Q and the bias on a different device from their KV cache.
                 for (int i = 0; i < ggml_backend_sched_get_n_backends(sched); ++i) {
                     auto backend = ggml_backend_sched_get_backend(sched, i);

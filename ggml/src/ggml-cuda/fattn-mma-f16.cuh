@@ -640,6 +640,8 @@ struct fattn_mma_bias_ctx {
     fattn_indexed_bias bias;
     int sequence;
     int head;
+    int gap0 = 0; // GGML_CUDA_FATTN_KV_WINDOW: fully masked K/V blocks [gap0, gap1) that the tile skips
+    int gap1 = 0;
 };
 
 // KV chunks: KQ max and rowsum of output column jc of the tile (jc = j*ncols2 + c), as the merge of the chunks needs them
@@ -660,7 +662,7 @@ static __device__ __forceinline__ float flash_attn_ext_f16_bias(
         const int64_t query = (int64_t) bctx.sequence*ne01.z + jq;
         const int bin = fattn_bias_bin(bctx.bias, query, bctx.sequence, jq, k, stride_mask);
         if ((uint32_t) bin < bctx.bias.n_bins) {
-            m = __half2float(__float2half(m + bctx.bias.table[(query*bctx.bias.n_bins + bin)*ne02 + bctx.head]));
+            m = __half2float(__float2half(m + fattn_bias_table(bctx.bias, query, bin, bctx.head)));
         }
     }
     return m;
@@ -1559,6 +1561,9 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
     } else if constexpr (ncols2 == 1 || use_sparse) {
         constexpr bool oob_check = true;
         for (; kb0 < kb0_stop-1; ++kb0) {
+            if (kb0 >= bctx.gap0 && kb0 < bctx.gap1) {
+                continue;
+            }
             constexpr bool last_iter = false;
             constexpr int  k_VKQ_sup = nbatch_fa;
             flash_attn_ext_f16_iter
@@ -1579,6 +1584,9 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
     } else {
         constexpr bool oob_check = false;
         for (; kb0 < kb0_stop-1; ++kb0) {
+            if (kb0 >= bctx.gap0 && kb0 < bctx.gap1) {
+                continue;
+            }
             constexpr bool last_iter = false;
             constexpr int  k_VKQ_sup = nbatch_fa;
             flash_attn_ext_f16_iter
@@ -2172,20 +2180,30 @@ static __global__ void flash_attn_ext_f16(
             kb0_stop = min(kb0_stop, KV_max[sequence*iter_j + jt] / nbatch_fa);
         }
         const int kb0_max = rotate && KV_max ? KV_max[sequence*iter_j + jt] / nbatch_fa : iter_k;
-        const int kb0_rot = rotate ? (kbc - kbc_tile) % iter_k : kb0_start;
+        int kb0_rot = rotate ? (kbc - kbc_tile) % iter_k : kb0_start;
+        fattn_mma_bias_ctx bctx{bias, sequence, zt_Q};
+        if (!rotate && !use_sparse && bias.kv_window && kb0_start == 0 && kbc + iter_k <= kbc_stop) {
+            // whole tile: only the visible K/V blocks, see flash_attn_mask_to_KV_window
+            const int4 w = bias.kv_window[sequence*iter_j + jt];
+            // kb0_start stays 0 (whole tile, no fixup), the tile visits K/V blocks [w.x, w.y) minus the gap
+            kb0_rot   = w.x;
+            kb0_stop  = min(kb0_stop, w.y) - w.x;
+            bctx.gap0 = w.z;
+            bctx.gap1 = w.w;
+        }
         constexpr bool is_fixup = false; // All but (potentially) the last iterations write their data to dst rather than the fixup buffer.
         if (kb0_start == 0) {
             constexpr bool needs_fixup = false; // CUDA block is working on an entire tile.
             flash_attn_ext_f16_process_tile<DKQ, DV, ncols1, ncols2, nwarps, use_logit_softcap, V_is_K_view, use_sparse, needs_fixup, is_fixup>
                 (Q_f2, K_h2, V_h2, mask_h, indices, sinks_f, dstk, dst_meta, scale, slope, logit_softcap,
                  ne01, ne02, gqa_ratio, ne11, stride_Q1, stride_Q2, stride_K, stride_V, stride_mask, jt, zt_gqa, kb0_rot, kb0_rot + kb0_stop - kb0_start, kb0_max,
-                 fattn_mma_bias_ctx{bias, sequence, zt_Q});
+                 bctx);
         } else {
             constexpr bool needs_fixup = true; // CUDA block is missing the beginning of a tile.
             flash_attn_ext_f16_process_tile<DKQ, DV, ncols1, ncols2, nwarps, use_logit_softcap, V_is_K_view, use_sparse, needs_fixup, is_fixup>
                 (Q_f2, K_h2, V_h2, mask_h, indices, sinks_f, dstk, dst_meta, scale, slope, logit_softcap,
                  ne01, ne02, gqa_ratio, ne11, stride_Q1, stride_Q2, stride_K, stride_V, stride_mask, jt, zt_gqa, kb0_rot, kb0_rot + kb0_stop - kb0_start, kb0_max,
-                 fattn_mma_bias_ctx{bias, sequence, zt_Q});
+                 bctx);
         }
 
         kbc += iter_k;
