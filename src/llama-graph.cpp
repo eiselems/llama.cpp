@@ -2374,6 +2374,7 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
     const bool weight_before_ffn = arch == LLM_ARCH_LLAMA4; // for llama4, we apply the sigmoid-ed weights before the FFN
 
     ggml_tensor * logits = nullptr;
+    ggml_tensor * router_in = cur;
 
     if (probs_in == nullptr) {
         logits = build_lora_mm(gate_inp, cur); // [n_expert, n_tokens]
@@ -2529,9 +2530,26 @@ ggml_tensor * llm_graph_context::build_moe_ffn(
     // compute the expert input before the slot lookup, so that the scheduler prefetches it for the CPU part (the router can read a different tensor)
     ggml_build_forward_expand(gf, cur);
 
+    // decode, LLAMA_MOE_CACHE_PREDICT: the experts the next layer application will likely select, its router on this
+    // router input (the residual stream changes little from one layer to the next); the cache uploads them early
+    ggml_tensor * pred_next = nullptr;
+    if (moe_cache != nullptr && moe_cache->predict_enabled() && n_tokens == 1 && probs_in == nullptr && selected_experts_in == nullptr &&
+            hparams.n_expert_groups <= 1 && il + 1 < (int) model.layers.size() && model.layers[il + 1].ffn_gate_inp != nullptr &&
+            (gating_op == LLAMA_EXPERT_GATING_FUNC_TYPE_SIGMOID || gating_op == LLAMA_EXPERT_GATING_FUNC_TYPE_SOFTMAX)) {
+        const llama_layer & next = model.layers[il + 1];
+        ggml_tensor * p = ggml_mul_mat(ctx0, next.ffn_gate_inp, router_in);
+        p = gating_op == LLAMA_EXPERT_GATING_FUNC_TYPE_SIGMOID ? ggml_sigmoid(ctx0, p) : ggml_soft_max(ctx0, p);
+        if (next.ffn_exp_probs_b != nullptr) {
+            p = ggml_add(ctx0, p, next.ffn_exp_probs_b);
+        }
+        pred_next = ggml_argsort_top_k(ctx0, p, hparams.n_expert_used(il + 1));
+        cb(pred_next, "ffn_moe_pred_next", il);
+        ggml_build_forward_expand(gf, pred_next);
+    }
+
     // the experts of host-resident layers may be read from the MoE cache (see llama_moe_cache::build_lookup)
     const llama_moe_cache_lookup cache = moe_cache == nullptr ? llama_moe_cache_lookup{} :
-        moe_cache->build_lookup(*this, { il, up_exps, gate_exps, down_exps, gate_up_exps, weight_before_ffn }, selected_experts);
+        moe_cache->build_lookup(*this, { il, up_exps, gate_exps, down_exps, gate_up_exps, weight_before_ffn, pred_next }, selected_experts);
 
     cur = ggml_reshape_3d(ctx0, cur, n_embd, 1, n_tokens);
 
