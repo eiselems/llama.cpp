@@ -29,3 +29,4 @@
 | S25 | + host experts on huge pages (THP) | `c0fe97986` | 7782 | 893.8 | 1089.8 | 37.85 | 28.6 |
 | S26 | + async CPU result upload, prefetched expert ids (exact) | `41a7235a2` | 7772 | 895.1 | 1086.4 | 38.79 | 29.26 |
 | S27 | + single staging slot (prefetch 3): +3.0 % tg vs S26 same session | `aa5671ce2` | 7782 | 808.7 | 1035.7 | 38.48 | 29.55 |
+| S28 | + K1 attention: bias table view + sliding-window block skipping (exact) | `bf11e34d7` | 7782 | 835.7 | 1193.6 | 40.14 | 28.55 |
