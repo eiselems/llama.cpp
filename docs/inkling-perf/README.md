@@ -6,6 +6,25 @@ Rows S0-S12: `scripts/inkling-bench.sh` (one repeated prompt, 128 tokens, single
 greedy correctness gate, long-context needle check, control/candidate/control interleaving). Only rows that pass the
 checks are recorded. Full experiment log and status: [PLAN.md](PLAN.md); ceilings: [THEORY.md](THEORY.md).
 
+## Kernel round K1-K7 (2026-11-24, 32k, bench.py, 3 runs interleaved with the previous preset each)
+
+**New best at 32k: S32** = S27 + K1 + K2 + K3 + K4 + K6 (`scripts/inkling/serve.sh start S32`): prefill 958 / 4,724 /
+29.7k tokens **844 / 1,291 / 1,394** t/s (S27: 809 / 1,036 / 1,063), decode **41.8** t/s (S27: 38.5), decode after a
+29.7k prompt **39.7** (S27: 29.6). Every step except K2 is bit-identical (server greedy output, FA microbench `cmp`).
+
+| step | change (env) | result vs previous | exact? |
+|---|---|---|---|
+| K1 = S28 | flash attention reads the bias table through its permuted view (`LLAMA_ATTN_BIAS_VIEW=1`): the gather was the prefill attention bottleneck, not the masked tiles; sliding-window layers skip their fully masked K/V blocks (`GGML_CUDA_FATTN_KV_WINDOW=1`) | pp5k **+12.9 %**, pp30k **+18.0 %** | yes |
+| K2 = S29 | single-token decode attention straight from the q4_0 K/V cache, all GQA heads of a K/V head per block (`GGML_CUDA_FATTN_DEC_Q4=1`, fattn-dec-q4.cu) | decode after 30k **+30 %**, c1 +2.9 % | no: F32 instead of F16 math, KLD 0.0080 at -ub 1 (= any last-bit change), PPL ratio 1.003 +- 0.006 |
+| K3 = S30 | the attention kernels subtract the per-query sinks from the table (`LLAMA_ATTN_BIAS_SINK_FOLD=1`), no SUB pass over 200 MB per layer | pp5k +2.2 %, pp30k +2.7 % | yes |
+| K4 = S31 | fused expert SiTU in prefill (`GGML_CUDA_INKLING2_SITU_PLAIN=1`): the existing fusion needed a per-expert scale the IQ4_NL model lacks, 10 kernels -> 1 (590 -> 98 ms per 7k prompt) | pp5k **+5.6 %**, pp30k +5.8 % | yes |
+| K5 | merge the decode GEMVs that share an input | **not done**: running the sibling GEMVs concurrently (`GGML_CUDA_GRAPH_OPT=1`, exact) gives 0 % (44.05/43.96 vs 43.86/44.01 t/s), so their launches are not on the critical path | - |
+| K6 = S32 | reuse the q8_1 copy of a decode MUL_MAT input for the next MUL_MAT of that input (`GGML_CUDA_Q8_1_REUSE=1`): 452 -> 251 quantize launches per token | c1 +1.2 % | yes |
+| K7 | CPU IQ4_NL expert kernel for one token | **not done**: in isolation it already streams 46-52 GB/s with 6 threads (cold weights, `MUL_MAT_ID` 2-8 experts), the 48.6 GB/s RAM limit; 12 threads are slower. Decode per token: ~57 CPU experts (~255 MB, ~5 ms at RAM speed) + ~121 MB PCIe uploads, GPU busy 15.9 of 22.8 ms: the rest is per-layer orchestration (router sync, wake-up, result upload), not the kernel | - |
+
+Tools added: `GGML_CUDA_NODE_PROFILE=FILE` (per-node CUDA timing, found K4), FA microbench and CPU MoE microbench (in the
+commit messages of K1/K2 and this section).
+
 ## Winners (2026-11-22 14:40, bench.py)
 
 | goal | preset | prefill 958 / 4,724 tok | decode (median of 6) | VRAM peak | start |
