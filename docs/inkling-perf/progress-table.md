@@ -31,3 +31,5 @@
 | S27 | + single staging slot (prefetch 3): +3.0 % tg vs S26 same session | `aa5671ce2` | 7782 | 808.7 | 1035.7 | 38.48 | 29.55 |
 | S28 | + K1 attention: bias table view + sliding-window block skipping (exact) | `bf11e34d7` | 7782 | 835.7 | 1193.6 | 40.14 | 28.55 |
 | S29 | + K2 decode attention straight from q4_0 K/V | `2be7815c5` | 7782 | 829.6 | 1194.4 | 41.00 | 38.57 |
+| S30 | + K3 sinks subtracted in the attention kernels (exact) | `b2d1c04ba` | 7782 | 829.9 | 1220.1 | 41.40 | 38.0 |
+| S31 | + K4 fused expert SiTU in prefill (exact) | `b1805749b` | 7782 | 832.8 | 1288.1 | 41.42 | 39.15 |
