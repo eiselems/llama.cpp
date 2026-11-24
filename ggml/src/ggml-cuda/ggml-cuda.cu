@@ -5385,6 +5385,53 @@ static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph 
     return 0;
 }
 
+// GGML_CUDA_NODE_PROFILE=FILE (debugging aid): time every node or fused run of nodes with CUDA events (CUDA graphs off)
+// and rewrite FILE with the totals per op and tensor name (layer suffix removed) after every graph
+struct ggml_cuda_node_prof_entry { double ms = 0.0; int64_t n = 0; };
+static std::map<std::string, ggml_cuda_node_prof_entry> & ggml_cuda_node_prof_totals() {
+    static auto * totals = new std::map<std::string, ggml_cuda_node_prof_entry>(); // never destroyed
+    return *totals;
+}
+static const char * ggml_cuda_node_prof_file() {
+    static const char * f = getenv("GGML_CUDA_NODE_PROFILE");
+    return f && *f ? f : nullptr;
+}
+static bool ggml_cuda_node_prof_enabled() {
+    return ggml_cuda_node_prof_file() != nullptr;
+}
+static void ggml_cuda_node_prof_print() {
+    std::vector<std::pair<std::string, ggml_cuda_node_prof_entry>> v(ggml_cuda_node_prof_totals().begin(), ggml_cuda_node_prof_totals().end());
+    std::sort(v.begin(), v.end(), [](const auto & a, const auto & b) { return a.second.ms > b.second.ms; });
+    double total = 0.0;
+    for (const auto & e : v) {
+        total += e.second.ms;
+    }
+    FILE * f = fopen(ggml_cuda_node_prof_file(), "w");
+    if (!f) {
+        return;
+    }
+    fprintf(f, "total %.1f ms\n", total);
+    for (const auto & e : v) {
+        fprintf(f, "%9.1f ms %5.1f %% %7lld  %s\n", e.second.ms, 100.0*e.second.ms/total, (long long) e.second.n, e.first.c_str());
+    }
+    fclose(f);
+}
+static std::string ggml_cuda_node_prof_key(const ggml_tensor * first, const ggml_tensor * last) {
+    auto strip = [](const char * name) {
+        std::string n(name);
+        size_t p = n.find_last_of('-');
+        if (p != std::string::npos && p + 1 < n.size() && n.find_first_not_of("0123456789", p + 1) == std::string::npos) {
+            n.resize(p);
+        }
+        return n;
+    };
+    std::string k = std::string(ggml_op_desc(first));
+    if (first != last) {
+        k = "FUSED " + k + ".." + ggml_op_desc(last);
+    }
+    return k + " [" + strip(last->name) + "] " + std::to_string(last->ne[0]) + "x" + std::to_string(last->ne[1]) + "x" + std::to_string(last->ne[2]);
+}
+
 static void ggml_cuda_graph_evaluate_and_capture(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph * cgraph, const bool use_cuda_graph, const bool cuda_graph_update_required, const void * graph_key) {
     bool graph_evaluated_or_captured = false;
 
@@ -5541,9 +5588,32 @@ static void ggml_cuda_graph_evaluate_and_capture(ggml_backend_cuda_context * cud
                     continue;
                 }
 
+                cudaEvent_t prof_ev[2] = { nullptr, nullptr };
+                const bool prof = !use_cuda_graph && ggml_cuda_node_prof_enabled();
+                if (prof) {
+                    CUDA_CHECK(cudaEventCreate(&prof_ev[0]));
+                    CUDA_CHECK(cudaEventCreate(&prof_ev[1]));
+                    CUDA_CHECK(cudaEventRecord(prof_ev[0], cuda_ctx->stream()));
+                }
+                auto prof_end = [&](const ggml_tensor * last) {
+                    if (!prof) {
+                        return;
+                    }
+                    CUDA_CHECK(cudaEventRecord(prof_ev[1], cuda_ctx->stream()));
+                    CUDA_CHECK(cudaEventSynchronize(prof_ev[1]));
+                    float ms = 0.0f;
+                    CUDA_CHECK(cudaEventElapsedTime(&ms, prof_ev[0], prof_ev[1]));
+                    auto & e = ggml_cuda_node_prof_totals()[ggml_cuda_node_prof_key(node, last)];
+                    e.ms += ms;
+                    e.n  += 1;
+                    CUDA_CHECK(cudaEventDestroy(prof_ev[0]));
+                    CUDA_CHECK(cudaEventDestroy(prof_ev[1]));
+                };
+
                 int nodes_to_skip = ggml_cuda_try_fuse(cuda_ctx, cgraph, i);
 
                 if (nodes_to_skip != 0) {
+                    prof_end(cgraph->nodes[i + nodes_to_skip]);
 #ifdef GGML_CUDA_DEBUG
                     const int last_fused = i + nodes_to_skip;
                     GGML_LOG_INFO("nodes_fused: %d, first: %s (%s), last: %s (%s)\n",
@@ -5575,11 +5645,16 @@ static void ggml_cuda_graph_evaluate_and_capture(ggml_backend_cuda_context * cud
                     GGML_LOG_ERROR("%s: op not supported %s (%s)\n", __func__, node->name, ggml_op_name(node->op));
                 }
                 GGML_ASSERT(ok);
+                prof_end(node);
 
                 if (!is_concurrent_event_active) {
                     try_launch_concurrent_event(node);
                }
             }
+        }
+
+        if (!use_cuda_graph && ggml_cuda_node_prof_enabled()) {
+            ggml_cuda_node_prof_print(); // cumulative totals so far
         }
 
 #ifdef USE_CUDA_GRAPH
@@ -5680,6 +5755,11 @@ static enum ggml_status ggml_backend_cuda_graph_compute(ggml_backend_t backend, 
         }
     }
 #endif // USE_CUDA_GRAPH
+
+    if (ggml_cuda_node_prof_enabled()) {
+        use_cuda_graph             = false; // GGML_CUDA_NODE_PROFILE times the nodes one by one
+        cuda_graph_update_required = false;
+    }
 
     if (use_cuda_graph && cuda_graph_update_required) {
         // Start CUDA graph capture
