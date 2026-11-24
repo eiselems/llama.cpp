@@ -44,15 +44,7 @@ static bool llama_attn_mask_positions() {
     return v && llama_attn_bias_positions();
 }
 
-// LLAMA_ATTN_BIAS_VIEW=1 (with LLAMA_ATTN_BIAS_POSITIONS): flash attention reads the bias table through the permuted
-// view of the model's [n_bins, n_head, n_query] table instead of the [n_head, n_bins, n_query] copy (exact, no copy,
-// coalesced reads: 1.3-2.2x faster prefill attention on Inkling 2)
-static bool llama_attn_bias_view() {
-    static const bool v = [] { const char * e = getenv("LLAMA_ATTN_BIAS_VIEW"); return e && atoi(e) != 0; }();
-    return v;
-}
-
-// LLAMA_ATTN_BIAS_SINK_FOLD=1 (with LLAMA_ATTN_BIAS_VIEW): the bias table goes to flash attention without the
+// LLAMA_ATTN_BIAS_SINK_FOLD=1 (with LLAMA_ATTN_BIAS_POSITIONS): the bias table goes to flash attention without the
 // subtraction of the per-query sinks, the kernel subtracts them as it reads the table (same F32 result, one pass less)
 static bool llama_attn_bias_sink_fold() {
     static const bool v = [] { const char * e = getenv("LLAMA_ATTN_BIAS_SINK_FOLD"); return e && atoi(e) != 0; }();
@@ -3225,7 +3217,8 @@ ggml_tensor * llm_graph_context::build_attn_mha(
     v = ggml_permute(ctx0, v, 0, 2, 1, 3);
 
     auto dense_bias_mask = [&]() {
-        ggml_tensor * bias = ggml_get_rows(ctx0, bias_table, bias_indices);
+        // the table is [n_bins, n_head, n_query] (ggml_flash_attn_ext_add_indexed_bias), get_rows gathers the bins of all heads
+        ggml_tensor * bias = ggml_get_rows(ctx0, ggml_cont(ctx0, ggml_permute(ctx0, bias_table, 1, 0, 2, 3)), bias_indices);
         bias = ggml_reshape_4d(ctx0, bias, q->ne[2], bias_indices->ne[0], q->ne[1], n_stream);
         bias = ggml_cont(ctx0, ggml_permute(ctx0, bias, 2, 0, 1, 3));
         cb(bias, "kq_b", il);
@@ -3286,22 +3279,12 @@ ggml_tensor * llm_graph_context::build_attn_mha(
                 GGML_ASSERT(!bias_pos && "LLAMA_ATTN_BIAS_POSITIONS: the attention device does not support the position bias");
                 ggml_flash_attn_ext_add_indexed_bias(cur, nullptr, nullptr);
                 cur->src[3] = dense_bias_mask();
-            } else if (bias_pos && llama_attn_bias_view() && bias_table->op == GGML_OP_CONT && bias_table->src[0]->op == GGML_OP_PERMUTE) {
-                // read the table through the permuted view: the [n_bins, n_head, n_query] layout before the copy has
-                // consecutive bins (= consecutive cells of a query) next to each other, the copy has n_head floats between them
-                ggml_tensor * view = bias_table->src[0];
-                ggml_tensor * sub  = view->src[0];
-                ggml_tensor * bias_sinks = nullptr;
-                if (llama_attn_bias_sink_fold() && sub->op == GGML_OP_SUB && sub->src[1]->ne[0] == 1 && sub->src[1]->type == GGML_TYPE_F32 &&
-                        sub->src[1]->ne[1] == sub->ne[1] && sub->src[1]->ne[2] == sub->ne[2] && sub->src[1]->ne[3] == 1) {
-                    // LLAMA_ATTN_BIAS_SINK_FOLD: the kernel subtracts the sinks as it reads the table, no pass over the table
-                    view       = ggml_permute(ctx0, sub->src[0], 1, 0, 2, 3);
-                    bias_sinks = ggml_reshape_3d(ctx0, sub->src[1], 1, sub->src[1]->ne[1], sub->src[1]->ne[2]);
-                }
-                ggml_flash_attn_ext_add_position_bias(cur, view, bias_indices);
-                if (bias_sinks) {
-                    ggml_flash_attn_ext_add_bias_sinks(cur, bias_sinks);
-                }
+            } else if (bias_pos && llama_attn_bias_sink_fold() && bias_table->op == GGML_OP_SUB && bias_table->src[1]->ne[0] == 1 &&
+                    bias_table->src[1]->type == GGML_TYPE_F32 && bias_table->src[1]->ne[1] == bias_table->ne[1] &&
+                    bias_table->src[1]->ne[2] == bias_table->ne[2] && bias_table->src[1]->ne[3] == 1) {
+                // LLAMA_ATTN_BIAS_SINK_FOLD: the kernel subtracts the per-query sinks as it reads the table, no pass over it
+                ggml_flash_attn_ext_add_position_bias(cur, bias_table->src[0], bias_indices);
+                ggml_flash_attn_ext_add_bias_sinks(cur, ggml_reshape_3d(ctx0, bias_table->src[1], 1, bias_table->src[1]->ne[1], bias_table->src[1]->ne[2]));
                 if (!kq_mask) {
                     ggml_flash_attn_ext_set_mask_from_positions(cur);
                 }

@@ -267,7 +267,7 @@ void ggml_cuda_fattn_dec_q4(ggml_backend_cuda_context & ctx, ggml_tensor * dst) 
         (const float *) Q->data, (const char *) K->data, (const char *) V->data, (const half *) mask->data, \
         (const float *) table->data, (const int32_t *) pos->data, part_acc.ptr, part_meta.ptr, \
         n_kv, cells_per_block, scale, Q->nb[2], K->nb[1], K->nb[2], V->nb[1], V->nb[2], \
-        table->nb[0]/(int64_t) sizeof(float), table->nb[1]/(int64_t) sizeof(float), (int) table->ne[1], (int) pos->ne[0], \
+        table->nb[1]/(int64_t) sizeof(float), table->nb[0]/(int64_t) sizeof(float), (int) table->ne[0], (int) pos->ne[0], \
         bias_sinks ? (const float *) bias_sinks->data : nullptr, bias_sinks ? bias_sinks->nb[1]/(int64_t) sizeof(float) : 0)
     switch (gqa) {
         case 1: DEC_Q4_LAUNCH(1); break;

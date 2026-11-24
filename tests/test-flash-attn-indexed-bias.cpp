@@ -22,7 +22,7 @@ static void test_indexed_bias(ggml_backend_t backend, int width, bool use_rows, 
     // mask_pos: no mask tensor, the kernel derives the causal mask from the positions
     auto * mask = mask_pos ? nullptr : ggml_new_tensor_4d(ctx, GGML_TYPE_F16, cols, n_query, 1, streams);
     auto * rows = use_rows ? ggml_new_tensor_2d(ctx, GGML_TYPE_I32, cols, streams) : nullptr;
-    auto * table = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, heads, bins, n_query*streams);
+    auto * table = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, bins, heads, n_query*streams); // [n_bins, n_head, n_query]
     auto * indices = ggml_new_tensor_2d(ctx, GGML_TYPE_I32, cols, n_query*streams);
     // positions mode: [cols, 2*streams] cell positions and query positions, the kernel derives the bins
     auto * posit = positions ? ggml_new_tensor_2d(ctx, GGML_TYPE_I32, cols, 2*streams) : nullptr;
@@ -100,7 +100,7 @@ static void test_indexed_bias(ggml_backend_t backend, int width, bool use_rows, 
             const int query = s*n_query + j;
             for (int h = 0; h < heads; ++h) {
                 for (int b = 0; b < bins; ++b) {
-                    biases[(query*bins + b)*heads + h] = float((b*(3 + h) + query) % 13 - 6)/2.9f;
+                    biases[(query*heads + h)*bins + b] = float((b*(3 + h) + query) % 13 - 6)/2.9f;
                 }
                 double sum = exp(double(sink_logits[h])), weighted = 0.0;
                 for (int c = 0; c < cols; ++c) {
@@ -120,7 +120,7 @@ static void test_indexed_bias(ggml_backend_t backend, int width, bool use_rows, 
                     if (visible) {
                         const int vk = (use_rows ? 0 : s)*kv_heads + h/(heads/kv_heads);
                         const double qk = 4.0*ggml_fp16_to_fp32(keys[(vk*cells + cell)*width])/sqrt(width);
-                        const float m = m_mask + biases[(query*bins + idx[i])*heads + h];
+                        const float m = m_mask + biases[(query*heads + h)*bins + idx[i]];
                         const double weight = exp(qk + ggml_fp16_to_fp32(ggml_fp32_to_fp16(m)));
                         weighted += weight*ggml_fp16_to_fp32(values[(vk*cells + cell)*width]);
                         sum += weight;

@@ -27,8 +27,8 @@ struct fattn_indexed_bias {
     int32_t mask_from_positions; // ggml_flash_attn_ext_set_mask_from_positions: no mask tensor, see fattn_mask_from_positions
     int32_t col0;                // KV chunks (GGML_CUDA_FATTN_KV_CHUNK): first mask column of the chunk, for the positions
     float2 * chunk_meta;         // KV chunks: per output row the KQ max and rowsum of the normalized result, nullptr if unused
-    int64_t s_head;              // table strides in elements: head (ne0), bin (ne1), query (ne2); a permuted view of a
-    int64_t s_bin;               // [n_bins, n_head, n_query] table reads consecutive bins (= consecutive cells) contiguously
+    int64_t s_head;              // table strides in elements: head (ne1), bin (ne0), query (ne2) of the [n_bins, n_head, n_query]
+    int64_t s_bin;               // table: consecutive bins (= consecutive cells of a query) are next to each other
     int64_t s_query;
     const int4 * kv_window;      // GGML_CUDA_FATTN_KV_WINDOW: per query tile {first, end, gap begin, gap end} K/V block of the mask, nullptr if unused
     const float * sinks;         // ggml_flash_attn_ext_add_bias_sinks: per-query sinks subtracted from the table entries, nullptr if unused
@@ -1619,14 +1619,14 @@ void launch_fattn_impl(const fattn_kv_chunk * ch,
         mask ? mask->nb[1] : 0, mask ? mask->nb[2] : 0, mask ? mask->nb[3] : 0,
         fattn_indexed_bias{dst->src[6] ? (const float *) dst->src[6]->data : nullptr,
                            bias_indices,
-                           dst->src[6] ? dst->src[6]->ne[1] : 0,
+                           dst->src[6] ? dst->src[6]->ne[0] : 0,
                            dst->src[6] ? ggml_get_op_params_i32(dst, 6) : 0,
                            dst->src[7] ? (int32_t) dst->src[7]->ne[0] : 0,
                            mask_pos,
                            (int32_t) (ch ? ch->c0 : 0),
                            ch && (stream_k || parallel_blocks == 1) ? ch->meta : nullptr,
-                           dst->src[6] ? (int64_t) (dst->src[6]->nb[0]/sizeof(float)) : 0,
                            dst->src[6] ? (int64_t) (dst->src[6]->nb[1]/sizeof(float)) : 0,
+                           dst->src[6] ? (int64_t) (dst->src[6]->nb[0]/sizeof(float)) : 0,
                            dst->src[6] ? (int64_t) (dst->src[6]->nb[2]/sizeof(float)) : 0,
                            KV_window.ptr,
                            dst->src[8] ? (const float *) dst->src[8]->data : nullptr,
