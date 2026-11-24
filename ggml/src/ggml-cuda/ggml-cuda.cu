@@ -4533,6 +4533,11 @@ static bool ggml_cuda_can_fuse(const struct ggml_cgraph *                cgraph,
 }
 
 // try and fuse nodes and return the number of nodes to skip
+static bool ggml_cuda_mmvq_pair_enabled() {
+    static const bool v = [] { const char * e = getenv("GGML_CUDA_MMVQ_PAIR"); return e && atoi(e) != 0; }();
+    return v;
+}
+
 static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph * cgraph, int i) {
 
     if (ggml_cuda_fusion_disabled()) {
@@ -4546,6 +4551,68 @@ static int ggml_cuda_try_fuse(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph 
         if (ggml_cuda_inkling2_match(cgraph, i, inkling2)) {
             ggml_cuda_inkling2_fused(*cuda_ctx, inkling2);
             return inkling2.n_nodes - 1;
+        }
+    }
+
+    // GGML_CUDA_MMVQ_PAIR=1: a single-token MUL_MAT and a later MUL_MAT (within 64 nodes) of the same input with a
+    // weight of the same type and shape run as one MMVQ launch, the second matrix in the shared slice. The partner is
+    // computed early, so no node in between may read or write its output or write the input; the eval loop then skips
+    // the partner (pre_done).
+    if (node->op == GGML_OP_MUL_MAT && ggml_cuda_mmvq_pair_enabled() && cuda_ctx->stream_context().concurrent_events.empty() &&
+            node->type == GGML_TYPE_F32 && ggml_is_contiguous(node) && ggml_is_quantized(node->src[0]->type) &&
+            node->src[1]->ne[1] == 1 && node->src[1]->ne[2] == 1 && node->src[1]->ne[3] == 1 &&
+            ggml_backend_buffer_get_usage(node->src[0]->buffer) != GGML_BACKEND_BUFFER_USAGE_COMPUTE &&
+            ggml_cuda_should_fuse_mul_mat_vec_q(node)) {
+        const ggml_tensor * a = node->src[0];
+        for (int j = i + 1; j < cgraph->n_nodes && j <= i + 64; ++j) {
+            ggml_tensor * other = cgraph->nodes[j];
+            const ggml_tensor * y0 = node->src[1];
+            const ggml_tensor * y1 = other->op == GGML_OP_MUL_MAT ? other->src[1] : nullptr;
+            if (y1 == nullptr || y1->data != y0->data || y1->type != y0->type || !ggml_are_same_shape(y0, y1) ||
+                    y0->nb[1] != y1->nb[1] || y0->nb[2] != y1->nb[2] || y0->nb[3] != y1->nb[3]) {
+                continue;
+            }
+            const ggml_tensor * b = other->src[0];
+            if (!(other->flags & GGML_TENSOR_FLAG_COMPUTE) || cuda_ctx->mmvq_pair_done(other) ||
+                    b->type != a->type || !ggml_are_same_shape(a, b) || a->nb[1] != b->nb[1] ||
+                    !ggml_is_matrix(a) || !ggml_is_matrix(b) || !ggml_is_contiguous(a) || !ggml_is_contiguous(b) ||
+                    !ggml_is_contiguous(other) || other->type != GGML_TYPE_F32 ||
+                    ggml_backend_buffer_get_usage(b->buffer) == GGML_BACKEND_BUFFER_USAGE_COMPUTE ||
+                    !ggml_cuda_should_fuse_mul_mat_vec_q(other)) {
+                continue; // another consumer of the input, look further
+            }
+            const char * o0 = (const char *) other->data;
+            const char * o1 = o0 + ggml_nbytes(other);
+            const char * x0 = (const char *) node->src[1]->data;
+            const char * x1 = x0 + ggml_nbytes(node->src[1]);
+            auto overlaps = [](const char * p0, const char * p1, const ggml_tensor * t) {
+                if (t == nullptr || t->data == nullptr) {
+                    return false;
+                }
+                const char * t0 = (const char *) t->data;
+                return t0 < p1 && p0 < t0 + ggml_nbytes(t);
+            };
+            bool safe = !overlaps(o0, o1, node);
+            for (int k = i + 1; safe && k < j; ++k) {
+                const ggml_tensor * t = cgraph->nodes[k];
+                if (overlaps(o0, o1, t) || (!ggml_cuda_is_view_or_noop(t) && overlaps(x0, x1, t))) {
+                    safe = false;
+                }
+                for (int si = 0; safe && si < GGML_MAX_SRC; ++si) {
+                    if (overlaps(o0, o1, t->src[si])) {
+                        safe = false;
+                    }
+                }
+            }
+            if (safe) {
+                ggml_cuda_mm_fusion_args_host fusion{};
+                fusion.shared_up  = b;
+                fusion.shared_dst = other;
+                ggml_cuda_mul_mat_vec_q(*cuda_ctx, a, node->src[1], nullptr, node, &fusion);
+                cuda_ctx->mmvq_pair_mark(other);
+                return 0 - 1; // computed, see the caller: nothing to skip
+            }
+            break;
         }
     }
 
@@ -5447,6 +5514,7 @@ static void ggml_cuda_q8_1_reuse_check(ggml_backend_cuda_context * cuda_ctx, con
 
 static void ggml_cuda_graph_evaluate_and_capture(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph * cgraph, const bool use_cuda_graph, const bool cuda_graph_update_required, const void * graph_key) {
     cuda_ctx->q8_1_reuse.valid = false; // inputs may have been written between graphs
+    cuda_ctx->mmvq_pair_done_list.clear();
     bool graph_evaluated_or_captured = false;
 
     // flag used to determine whether it is an integrated_gpu
@@ -5624,7 +5692,22 @@ static void ggml_cuda_graph_evaluate_and_capture(ggml_backend_cuda_context * cud
                     CUDA_CHECK(cudaEventDestroy(prof_ev[1]));
                 };
 
+                if (!cuda_ctx->mmvq_pair_done_list.empty() && cuda_ctx->mmvq_pair_done(node)) {
+                    if (prof) {
+                        CUDA_CHECK(cudaEventDestroy(prof_ev[0]));
+                        CUDA_CHECK(cudaEventDestroy(prof_ev[1]));
+                    }
+                    continue; // GGML_CUDA_MMVQ_PAIR: computed together with an earlier MUL_MAT
+                }
+
                 int nodes_to_skip = ggml_cuda_try_fuse(cuda_ctx, cgraph, i);
+
+                if (nodes_to_skip == -1) { // GGML_CUDA_MMVQ_PAIR: node and a later partner computed, nothing to skip
+                    prof_end(node);
+                    ggml_cuda_q8_1_reuse_check(cuda_ctx, node);
+                    ggml_cuda_q8_1_reuse_check(cuda_ctx, cuda_ctx->mmvq_pair_done_list.back());
+                    continue;
+                }
 
                 if (nodes_to_skip != 0) {
                     prof_end(cgraph->nodes[i + nodes_to_skip]);

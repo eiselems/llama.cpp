@@ -1417,6 +1417,20 @@ struct ggml_backend_cuda_context {
     cudaEvent_t copy_event = nullptr;
     ggml_cuda_q8_1_reuse q8_1_reuse;
 
+    // GGML_CUDA_MMVQ_PAIR: MUL_MAT nodes of the current graph that were computed early with an earlier partner
+    std::vector<const ggml_tensor *> mmvq_pair_done_list;
+    bool mmvq_pair_done(const ggml_tensor * t) const {
+        for (const ggml_tensor * d : mmvq_pair_done_list) {
+            if (d == t) {
+                return true;
+            }
+        }
+        return false;
+    }
+    void mmvq_pair_mark(const ggml_tensor * t) {
+        mmvq_pair_done_list.push_back(t);
+    }
+
     cudaStream_t streams[GGML_CUDA_MAX_DEVICES][GGML_CUDA_MAX_STREAMS] = {};
     cublasHandle_t cublas_handles[GGML_CUDA_MAX_DEVICES][GGML_CUDA_MAX_STREAMS] = {};
     void * cublas_workspaces[GGML_CUDA_MAX_DEVICES][GGML_CUDA_MAX_STREAMS] = {};

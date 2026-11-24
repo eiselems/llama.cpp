@@ -1126,7 +1126,8 @@ static void mul_mat_vec_q_switch_fusion(
         const uint32_t ids_stride, cudaStream_t stream) {
 
     const bool has_fusion = fusion.gate != nullptr || fusion.x_bias != nullptr || fusion.gate_bias != nullptr ||
-                            fusion.x_scale != nullptr || fusion.gate_scale != nullptr;
+                            fusion.x_scale != nullptr || fusion.gate_scale != nullptr ||
+                            fusion.shared_up != nullptr; // GGML_CUDA_MMVQ_PAIR: a second matrix in the last grid slice
     if constexpr (c_ncols_dst == 1) {
         if (has_fusion) {
             const ggml_cuda_kernel_launch_params launch_params = ggml_cuda_kernel_launch_params(block_nums, block_dims, nbytes_shared, stream);
@@ -1560,7 +1561,19 @@ void ggml_cuda_mul_mat_vec_q(
         // non-negligible for some models such as gpt-oss-20b
         GGML_ASSERT((fusion->x_scale == nullptr && fusion->gate_scale == nullptr) || src0->type == GGML_TYPE_NVFP4);
 
-        if (fusion->shared_up) {
+        if (fusion->shared_up && !ids) {
+            // GGML_CUDA_MMVQ_PAIR: a second matrix of the same type and shape times the same single-token input
+            GGML_ASSERT(!fusion->gate && !fusion->shared_gate && fusion->shared_dst);
+            GGML_ASSERT(!fusion->x_bias && !fusion->gate_bias && !fusion->x_scale && !fusion->gate_scale);
+            GGML_ASSERT(ne11 == 1 && ne12 == 1 && ne13 == 1 && ne02 == 1 && ne03 == 1);
+            GGML_ASSERT(fusion->shared_up->type == src0->type && ggml_are_same_shape(fusion->shared_up, src0));
+            GGML_ASSERT(fusion->shared_up->nb[1] == nb01 && ggml_is_matrix(fusion->shared_up));
+            GGML_ASSERT(fusion->shared_dst->type == GGML_TYPE_F32 && ggml_is_contiguous(fusion->shared_dst));
+            GGML_ASSERT(ggml_are_same_shape(fusion->shared_dst, dst));
+            fusion_local.shared_up   = fusion->shared_up->data;
+            fusion_local.shared_dst  = (float *) fusion->shared_dst->data;
+            fusion_local.shared_stride_col_dst = fusion->shared_dst->nb[1] / ts_dst;
+        } else if (fusion->shared_up) {
             GGML_ASSERT(ids && fusion->gate && fusion->shared_gate && fusion->shared_dst);
             GGML_ASSERT(!fusion->x_bias && !fusion->gate_bias && !fusion->x_scale && !fusion->gate_scale);
             GGML_ASSERT(ne11 == 1 && ne03 == 1 && ne13 == 1);
