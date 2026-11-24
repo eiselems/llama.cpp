@@ -1395,10 +1395,27 @@ struct ggml_tensor_extra_gpu {
 struct ggml_cuda_graph;
 struct ggml_cuda_stream_context;
 
+// GGML_CUDA_Q8_1_REUSE=1: the q8_1 copy of the last single-token MUL_MAT input, reused by the next MUL_MAT of the same
+// tensor (Inkling 2: up to 6 projections read one layer input). Valid while no node writes into the input, see the
+// eval loop; one graph at a time.
+struct ggml_cuda_q8_1_reuse {
+    static constexpr size_t cap = 64*1024;
+    const ggml_tensor * tensor   = nullptr; // the input as a tensor object, or its view source
+    size_t              offs     = 0;       // view offset
+    const char *        data     = nullptr;
+    const char *        data_end = nullptr;
+    int64_t             ne[4]    = {};
+    size_t              nb[4]    = {};
+    int                 stream_no = -1;
+    void *              buf      = nullptr; // cap bytes, allocated on first use
+    bool                valid    = false;
+};
+
 struct ggml_backend_cuda_context {
     int device;
     std::string name;
     cudaEvent_t copy_event = nullptr;
+    ggml_cuda_q8_1_reuse q8_1_reuse;
 
     cudaStream_t streams[GGML_CUDA_MAX_DEVICES][GGML_CUDA_MAX_STREAMS] = {};
     cublasHandle_t cublas_handles[GGML_CUDA_MAX_DEVICES][GGML_CUDA_MAX_STREAMS] = {};
