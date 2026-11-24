@@ -744,7 +744,7 @@ struct inkling2_situ_params {
     float c0, c1, d0, d1; // SCALE, TANH, SCALE on the up
 };
 
-template <bool gather>
+template <int mode> // 0: scale tensor, 1: gathered scale, 2: no scale (the expert output as it is)
 static __global__ void inkling2_situ_f32(const float * gu_ptr, const float * s_ptr, const int32_t * ids_ptr,
         float * dst_ptr, const int n_ff, const int n_used, const int64_t n,
         const int64_t gu_s1, const int64_t gu_s2, const int64_t s_s1, const int64_t s_s2, const int64_t ids_s1,
@@ -760,11 +760,14 @@ static __global__ void inkling2_situ_f32(const float * gu_ptr, const float * s_p
     const int64_t e = (i / n_ff) % n_used;
     const int64_t t = i / ((int64_t) n_ff*n_used);
 
-    const float s = gather ? s_ptr[ids_ptr[t*ids_s1 + e]] : s_ptr[t*s_s2 + e*s_s1];
-
     const float * gu = gu_ptr + t*gu_s2 + e*gu_s1;
-    const float g = __fmul_rn(gu[j],        s);
-    const float u = __fmul_rn(gu[n_ff + j], s);
+    float g = gu[j];
+    float u = gu[n_ff + j];
+    if constexpr (mode != 2) {
+        const float s = mode == 1 ? s_ptr[ids_ptr[t*ids_s1 + e]] : s_ptr[t*s_s2 + e*s_s1];
+        g = __fmul_rn(g, s);
+        u = __fmul_rn(u, s);
+    }
 
     const float act  = __fmul_rn(p.b0*tanhf(p.a0*g + p.a1) + p.b1, 1.0f / (1.0f + expf(-g)));
     const float lin  = p.d0*tanhf(p.c0*u + p.c1) + p.d1;
@@ -862,6 +865,60 @@ static bool inkling2_match_situ(const ggml_cgraph * cgraph, int i, ggml_cuda_ink
     return true;
 }
 
+// the same chain without the per-expert scale (GGML_CUDA_INKLING2_SITU_PLAIN=1), as the expert FFN of Inkling 2 builds
+// it: it starts at the gate SCALE, the gate VIEW before it is a view the eval loop skips
+//   [VIEW gate] SCALE TANH SCALE SIGMOID MUL VIEW(up) SCALE TANH SCALE MUL
+static bool inkling2_match_situ_plain(const ggml_cgraph * cgraph, int i, ggml_cuda_inkling2_args & args) {
+    static const bool enabled = [] { const char * e = getenv("GGML_CUDA_INKLING2_SITU_PLAIN"); return e && atoi(e) != 0; }();
+    if (!enabled || i < 1) {
+        return false;
+    }
+    // the up VIEW at i + 5 is not part of the subgraph: it views the expert output from before the chain
+    const int idxs[9] = { i, i + 1, i + 2, i + 3, i + 4, i + 6, i + 7, i + 8, i + 9 };
+    const ggml_op ops[9] = { GGML_OP_SCALE, GGML_OP_UNARY, GGML_OP_SCALE, GGML_OP_UNARY, GGML_OP_MUL,
+                             GGML_OP_SCALE, GGML_OP_UNARY, GGML_OP_SCALE, GGML_OP_MUL };
+    const int outputs[1] = { i + 9 };
+    if (i + 9 >= cgraph->n_nodes || cgraph->nodes[i + 5]->op != GGML_OP_VIEW ||
+            !ggml_can_fuse_subgraph_ext(cgraph, idxs, 9, ops, outputs, 1)) {
+        return false;
+    }
+    if (!ggml_check_edges(cgraph, i, { {1, 0, 0}, {2, 0, 1}, {4, 0, 2}, {4, 1, 3}, {6, 0, 5}, {7, 0, 6}, {8, 0, 7},
+                    {9, 0, 4}, {9, 1, 8} })) {
+        return false;
+    }
+
+    ggml_tensor * const * nodes = cgraph->nodes + i;
+    const ggml_tensor * gate = nodes[0]->src[0];
+    const ggml_tensor * up   = nodes[5];
+    ggml_tensor       * dst  = nodes[9];
+    if (gate->op != GGML_OP_VIEW || nodes[3]->src[0] != gate || up->op != GGML_OP_VIEW || up->src[0] != gate->src[0] ||
+            ggml_get_unary_op(nodes[1]) != GGML_UNARY_OP_TANH || ggml_get_unary_op(nodes[3]) != GGML_UNARY_OP_SIGMOID ||
+            ggml_get_unary_op(nodes[7]) != GGML_UNARY_OP_TANH) {
+        return false;
+    }
+    const ggml_tensor * gu = gate->src[0];
+    const int64_t n_ff   = gate->ne[0];
+    const int64_t n_used = gu->ne[1];
+    const int64_t n_tok  = gu->ne[2];
+    if (!inkling2_is_f32_rows(gu) || gu->ne[0] != 2*n_ff || gu->ne[3] != 1 ||
+            gate->view_offs != 0 || up->view_offs != n_ff*sizeof(float) || !ggml_are_same_shape(gate, up) ||
+            gate->nb[1] != gu->nb[1] || gate->nb[2] != gu->nb[2] || up->nb[1] != gu->nb[1] || up->nb[2] != gu->nb[2] ||
+            gate->ne[1] != n_used || gate->ne[2] != n_tok || dst->type != GGML_TYPE_F32 || !ggml_is_contiguous(dst) ||
+            !ggml_are_same_shape(dst, gate) || inkling2_overlap(dst, gu) || !inkling2_outside(cgraph, i, 10, { gu })) {
+        return false;
+    }
+    args.type    = GGML_CUDA_INKLING2_SITU;
+    args.n_nodes = 10;
+    args.dst     = dst;
+    args.src[0]  = gu;
+    args.node[0] = nodes[0];
+    args.node[1] = nodes[2];
+    args.node[2] = nodes[6];
+    args.node[3] = nodes[8];
+    args.node[4] = const_cast<ggml_tensor *>(gate);
+    return true;
+}
+
 static void inkling2_situ(ggml_backend_cuda_context & ctx, const ggml_cuda_inkling2_args & args) {
     const ggml_tensor * gu   = args.src[0];
     const ggml_tensor * s    = args.src[1];
@@ -882,11 +939,15 @@ static void inkling2_situ(ggml_backend_cuda_context & ctx, const ggml_cuda_inkli
     const int64_t gu_s1 = gu->nb[1]/sizeof(float);
     const int64_t gu_s2 = gu->nb[2]/sizeof(float);
     if (ids) {
-        ggml_cuda_kernel_launch(inkling2_situ_f32<true>, params, (const float *) gu->data, (const float *) s->data,
+        ggml_cuda_kernel_launch(inkling2_situ_f32<1>, params, (const float *) gu->data, (const float *) s->data,
                 (const int32_t *) ids->data, (float *) args.dst->data, (int) gate->ne[0], (int) gate->ne[1], n, gu_s1, gu_s2,
                 (int64_t) 0, (int64_t) 0, (int64_t) (ids->nb[1]/sizeof(int32_t)), p);
+    } else if (!s) {
+        ggml_cuda_kernel_launch(inkling2_situ_f32<2>, params, (const float *) gu->data, (const float *) nullptr,
+                (const int32_t *) nullptr, (float *) args.dst->data, (int) gate->ne[0], (int) gate->ne[1], n, gu_s1, gu_s2,
+                (int64_t) 0, (int64_t) 0, (int64_t) 0, p);
     } else {
-        ggml_cuda_kernel_launch(inkling2_situ_f32<false>, params, (const float *) gu->data, (const float *) s->data,
+        ggml_cuda_kernel_launch(inkling2_situ_f32<0>, params, (const float *) gu->data, (const float *) s->data,
                 (const int32_t *) nullptr, (float *) args.dst->data, (int) gate->ne[0], (int) gate->ne[1], n, gu_s1, gu_s2,
                 (int64_t) (s->nb[1]/sizeof(float)), (int64_t) (s->nb[2]/sizeof(float)), (int64_t) 0, p);
     }
@@ -2122,6 +2183,8 @@ bool ggml_cuda_inkling2_match(const ggml_cgraph * cgraph, int i, ggml_cuda_inkli
             return inkling2_match_conv(cgraph, i, args);
         case GGML_OP_REPEAT:
             return inkling2_match_situ(cgraph, i, args);
+        case GGML_OP_SCALE:
+            return inkling2_match_situ_plain(cgraph, i, args);
         case GGML_OP_RMS_NORM:
             return inkling2_match_mix(cgraph, i, args) || inkling2_match_ctrl_down(cgraph, i, args) ||
                    inkling2_match_ctrl_norm(cgraph, i, args);
