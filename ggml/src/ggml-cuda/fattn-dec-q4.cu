@@ -49,7 +49,8 @@ static __global__ void fattn_dec_q4_partial(
         float * __restrict__ part_acc, float2 * __restrict__ part_meta,
         const int n_kv, const int cells_per_block, const float scale,
         const int64_t q_nb2, const int64_t k_nb1, const int64_t k_nb2, const int64_t v_nb1, const int64_t v_nb2,
-        const int64_t t_s_head, const int64_t t_s_bin, const int n_bins, const int n_pos_cols) {
+        const int64_t t_s_head, const int64_t t_s_bin, const int n_bins, const int n_pos_cols,
+        const float * __restrict__ bias_sinks, const int64_t bs_s_head) {
     const int split = blockIdx.x;
     const int hkv   = blockIdx.y;
     const int tid   = threadIdx.x;
@@ -116,7 +117,11 @@ static __global__ void fattn_dec_q4_partial(
         dec_q4_load((const block_q4_0 *) (V + c*v_nb1 + hkv*v_nb2), l, v);
 #pragma unroll
         for (int g = 0; g < gqa; ++g) {
-            const float mb = __half2float(__float2half(m + table[bin*t_s_bin + (hkv*gqa + g)*t_s_head]));
+            float t = table[bin*t_s_bin + (hkv*gqa + g)*t_s_head];
+            if (bias_sinks) {
+                t = __fsub_rn(t, bias_sinks[(hkv*gqa + g)*bs_s_head]); // ggml_flash_attn_ext_add_bias_sinks
+            }
+            const float mb = __half2float(__float2half(m + t));
             const float x  = logit[g] + mb;
             const float Mn = fmaxf(M[g], x);
             const float a  = expf(M[g] - Mn); // M = -inf at the start: a = 0
@@ -239,6 +244,7 @@ void ggml_cuda_fattn_dec_q4(ggml_backend_cuda_context & ctx, ggml_tensor * dst) 
     const ggml_tensor * sinks = dst->src[4];
     const ggml_tensor * table = dst->src[6];
     const ggml_tensor * pos = dst->src[7];
+    const ggml_tensor * bias_sinks = dst->src[8];
 
     float scale;
     memcpy(&scale, (const float *) dst->op_params + 0, sizeof(float));
@@ -261,7 +267,8 @@ void ggml_cuda_fattn_dec_q4(ggml_backend_cuda_context & ctx, ggml_tensor * dst) 
         (const float *) Q->data, (const char *) K->data, (const char *) V->data, (const half *) mask->data, \
         (const float *) table->data, (const int32_t *) pos->data, part_acc.ptr, part_meta.ptr, \
         n_kv, cells_per_block, scale, Q->nb[2], K->nb[1], K->nb[2], V->nb[1], V->nb[2], \
-        table->nb[0]/(int64_t) sizeof(float), table->nb[1]/(int64_t) sizeof(float), (int) table->ne[1], (int) pos->ne[0])
+        table->nb[0]/(int64_t) sizeof(float), table->nb[1]/(int64_t) sizeof(float), (int) table->ne[1], (int) pos->ne[0], \
+        bias_sinks ? (const float *) bias_sinks->data : nullptr, bias_sinks ? bias_sinks->nb[1]/(int64_t) sizeof(float) : 0)
     switch (gqa) {
         case 1: DEC_Q4_LAUNCH(1); break;
         case 2: DEC_Q4_LAUNCH(2); break;

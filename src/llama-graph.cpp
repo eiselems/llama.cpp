@@ -52,6 +52,13 @@ static bool llama_attn_bias_view() {
     return v;
 }
 
+// LLAMA_ATTN_BIAS_SINK_FOLD=1 (with LLAMA_ATTN_BIAS_VIEW): the bias table goes to flash attention without the
+// subtraction of the per-query sinks, the kernel subtracts them as it reads the table (same F32 result, one pass less)
+static bool llama_attn_bias_sink_fold() {
+    static const bool v = [] { const char * e = getenv("LLAMA_ATTN_BIAS_SINK_FOLD"); return e && atoi(e) != 0; }();
+    return v;
+}
+
 static ggml_tensor * build_attn_inp_kq_mask(
         ggml_context * ctx,
         const llama_kv_cache_context * mctx,
@@ -3282,7 +3289,19 @@ ggml_tensor * llm_graph_context::build_attn_mha(
             } else if (bias_pos && llama_attn_bias_view() && bias_table->op == GGML_OP_CONT && bias_table->src[0]->op == GGML_OP_PERMUTE) {
                 // read the table through the permuted view: the [n_bins, n_head, n_query] layout before the copy has
                 // consecutive bins (= consecutive cells of a query) next to each other, the copy has n_head floats between them
-                ggml_flash_attn_ext_add_position_bias(cur, bias_table->src[0], bias_indices);
+                ggml_tensor * view = bias_table->src[0];
+                ggml_tensor * sub  = view->src[0];
+                ggml_tensor * bias_sinks = nullptr;
+                if (llama_attn_bias_sink_fold() && sub->op == GGML_OP_SUB && sub->src[1]->ne[0] == 1 && sub->src[1]->type == GGML_TYPE_F32 &&
+                        sub->src[1]->ne[1] == sub->ne[1] && sub->src[1]->ne[2] == sub->ne[2] && sub->src[1]->ne[3] == 1) {
+                    // LLAMA_ATTN_BIAS_SINK_FOLD: the kernel subtracts the sinks as it reads the table, no pass over the table
+                    view       = ggml_permute(ctx0, sub->src[0], 1, 0, 2, 3);
+                    bias_sinks = ggml_reshape_3d(ctx0, sub->src[1], 1, sub->src[1]->ne[1], sub->src[1]->ne[2]);
+                }
+                ggml_flash_attn_ext_add_position_bias(cur, view, bias_indices);
+                if (bias_sinks) {
+                    ggml_flash_attn_ext_add_bias_sinks(cur, bias_sinks);
+                }
                 if (!kq_mask) {
                     ggml_flash_attn_ext_set_mask_from_positions(cur);
                 }

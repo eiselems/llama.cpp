@@ -31,10 +31,15 @@ struct fattn_indexed_bias {
     int64_t s_bin;               // [n_bins, n_head, n_query] table reads consecutive bins (= consecutive cells) contiguously
     int64_t s_query;
     const int4 * kv_window;      // GGML_CUDA_FATTN_KV_WINDOW: per query tile {first, end, gap begin, gap end} K/V block of the mask, nullptr if unused
+    const float * sinks;         // ggml_flash_attn_ext_add_bias_sinks: per-query sinks subtracted from the table entries, nullptr if unused
+    int64_t sinks_s_head;        // their strides in elements
+    int64_t sinks_s_query;
 };
 
 static __device__ __forceinline__ float fattn_bias_table(const fattn_indexed_bias & bias, const int64_t query, const int bin, const int head) {
-    return bias.table[query*bias.s_query + bin*bias.s_bin + head*bias.s_head];
+    const float t = bias.table[query*bias.s_query + bin*bias.s_bin + head*bias.s_head];
+    // the same F32 subtraction as the GGML_OP_SUB it replaces
+    return bias.sinks ? __fsub_rn(t, bias.sinks[query*bias.sinks_s_query + head*bias.sinks_s_head]) : t;
 }
 
 // the causal mask of one sequence from the positions: 0 if 0 <= cell_pos <= query_pos, else -inf
@@ -1623,7 +1628,10 @@ void launch_fattn_impl(const fattn_kv_chunk * ch,
                            dst->src[6] ? (int64_t) (dst->src[6]->nb[0]/sizeof(float)) : 0,
                            dst->src[6] ? (int64_t) (dst->src[6]->nb[1]/sizeof(float)) : 0,
                            dst->src[6] ? (int64_t) (dst->src[6]->nb[2]/sizeof(float)) : 0,
-                           KV_window.ptr}
+                           KV_window.ptr,
+                           dst->src[8] ? (const float *) dst->src[8]->data : nullptr,
+                           dst->src[8] ? (int64_t) (dst->src[8]->nb[1]/sizeof(float)) : 0,
+                           dst->src[8] ? (int64_t) (dst->src[8]->nb[2]/sizeof(float)) : 0}
     );
     CUDA_CHECK(cudaGetLastError());
 
