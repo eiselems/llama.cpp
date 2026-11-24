@@ -5432,7 +5432,21 @@ static std::string ggml_cuda_node_prof_key(const ggml_tensor * first, const ggml
     return k + " [" + strip(last->name) + "] " + std::to_string(last->ne[0]) + "x" + std::to_string(last->ne[1]) + "x" + std::to_string(last->ne[2]);
 }
 
+// GGML_CUDA_Q8_1_REUSE: a node that writes into the input of the cached q8_1 copy makes it stale
+static void ggml_cuda_q8_1_reuse_check(ggml_backend_cuda_context * cuda_ctx, const ggml_tensor * node) {
+    ggml_cuda_q8_1_reuse & qr = cuda_ctx->q8_1_reuse;
+    if (!qr.valid || node->data == nullptr) {
+        return;
+    }
+    const char * d0 = (const char *) node->data;
+    const char * d1 = d0 + ggml_nbytes(node);
+    if (d0 < qr.data_end && qr.data < d1) {
+        qr.valid = false;
+    }
+}
+
 static void ggml_cuda_graph_evaluate_and_capture(ggml_backend_cuda_context * cuda_ctx, ggml_cgraph * cgraph, const bool use_cuda_graph, const bool cuda_graph_update_required, const void * graph_key) {
+    cuda_ctx->q8_1_reuse.valid = false; // inputs may have been written between graphs
     bool graph_evaluated_or_captured = false;
 
     // flag used to determine whether it is an integrated_gpu
@@ -5614,6 +5628,9 @@ static void ggml_cuda_graph_evaluate_and_capture(ggml_backend_cuda_context * cud
 
                 if (nodes_to_skip != 0) {
                     prof_end(cgraph->nodes[i + nodes_to_skip]);
+                    for (int k = i; k <= i + nodes_to_skip; ++k) {
+                        ggml_cuda_q8_1_reuse_check(cuda_ctx, cgraph->nodes[k]);
+                    }
 #ifdef GGML_CUDA_DEBUG
                     const int last_fused = i + nodes_to_skip;
                     GGML_LOG_INFO("nodes_fused: %d, first: %s (%s), last: %s (%s)\n",
@@ -5646,6 +5663,7 @@ static void ggml_cuda_graph_evaluate_and_capture(ggml_backend_cuda_context * cud
                 }
                 GGML_ASSERT(ok);
                 prof_end(node);
+                ggml_cuda_q8_1_reuse_check(cuda_ctx, node);
 
                 if (!is_concurrent_event_active) {
                     try_launch_concurrent_event(node);
