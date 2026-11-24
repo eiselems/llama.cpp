@@ -5580,6 +5580,14 @@ void ggml_flash_attn_ext_set_mask_from_positions(struct ggml_tensor * a) {
     ggml_set_op_params_i32(a, 7, 1);
 }
 
+void ggml_flash_attn_ext_add_bias_sinks(struct ggml_tensor * a, struct ggml_tensor * sinks) {
+    GGML_ASSERT(a->op == GGML_OP_FLASH_ATTN_EXT && a->src[6]);
+    const struct ggml_tensor * q = a->src[0];
+    GGML_ASSERT(sinks->type == GGML_TYPE_F32 && sinks->ne[0] == 1 && sinks->ne[1] == q->ne[2] && sinks->ne[2] == q->ne[1]*q->ne[3] && sinks->ne[3] == 1);
+    GGML_ASSERT(sinks->nb[1] % sizeof(float) == 0 && sinks->nb[2] % sizeof(float) == 0);
+    a->src[8] = sinks;
+}
+
 bool ggml_flash_attn_ext_mask_from_positions(const struct ggml_tensor * a) {
     GGML_ASSERT(a->op == GGML_OP_FLASH_ATTN_EXT);
     return ggml_get_op_params_i32(a, 7) != 0;

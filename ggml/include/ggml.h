@@ -2316,6 +2316,10 @@ extern "C" {
     // positions: query q sees mask column k if 0 <= cell_pos[k] <= query_pos[q]. Saves the [n_kv, n_query] f16 mask.
     GGML_API void ggml_flash_attn_ext_set_mask_from_positions(struct ggml_tensor * a);
 
+    // per-query sink logits [1, n_head, n_query*n_stream] (src[8]) that the backend subtracts from the bias table
+    // entries as it reads them: the table is then table - sinks without a separate pass over it
+    GGML_API void ggml_flash_attn_ext_add_bias_sinks(struct ggml_tensor * a, struct ggml_tensor * sinks);
+
     GGML_API bool ggml_flash_attn_ext_mask_from_positions(const struct ggml_tensor * a);
 
     // TODO: needs to be adapted to ggml_flash_attn_ext
