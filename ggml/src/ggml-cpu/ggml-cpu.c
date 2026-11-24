@@ -1546,6 +1546,12 @@ static void ggml_compute_forward_mul_mat_id_one_chunk(
 
     float tmp[16];
 
+    static int moe_prefetch = -1;
+    if (moe_prefetch < 0) {
+        const char * e = getenv("GGML_CPU_MOE_PREFETCH");
+        moe_prefetch = e ? atoi(e) : 0;
+    }
+
     for (int64_t iir1 = ir1_start; iir1 < ir1_end; iir1 += blck_1) {
         for (int64_t iir0 = ir0_start; iir0 < ir0_end; iir0 += blck_0) {
             for (int64_t ir1 = iir1; ir1 < iir1 + blck_1 && ir1 < ir1_end; ++ir1) {
@@ -1572,6 +1578,15 @@ static void ggml_compute_forward_mul_mat_id_one_chunk(
                 float * dst_col = (float *) ((char *) dst->data + (i1*nb1 + i2*nb2));
 
                 for (int64_t ir0 = iir0; ir0 < iir0 + blck_0 && ir0 < ir0_end; ++ir0) {
+#if defined(__GNUC__)
+                    // GGML_CPU_MOE_PREFETCH=N: prefetch the weight row N rows ahead (one-token decode streams experts from RAM)
+                    if (moe_prefetch > 0 && ir0 + moe_prefetch < ir0_end) {
+                        const char * pf = src0_cur + (ir0 + moe_prefetch)*nb01;
+                        for (size_t off = 0; off < (size_t) nb01; off += 64) {
+                            __builtin_prefetch(pf + off, 0, 0);
+                        }
+                    }
+#endif
                     vec_dot(ne00, &tmp[ir0 - iir0], 0, src0_cur + ir0*nb01, 0, src1_col, 0, 1);
                 }
 
