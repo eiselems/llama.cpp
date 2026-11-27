@@ -6,6 +6,18 @@ Rows S0-S12: `scripts/inkling-bench.sh` (one repeated prompt, 128 tokens, single
 greedy correctness gate, long-context needle check, control/candidate/control interleaving). Only rows that pass the
 checks are recorded. Full experiment log and status: [PLAN.md](PLAN.md); ceilings: [THEORY.md](THEORY.md).
 
+## Sampling on the GPU (2026-11-27, 32k, bench.py, 2 pairs interleaved)
+
+**New best at 32k: S36** = S32 + `--backend-sampling` (`scripts/inkling/serve.sh start S36`): decode **42.48 / 42.67**
+t/s vs S32 41.14 / 41.06 (**+3.6 %**), prefill the same (958 / 4,724 tok: ~820 / ~1,268 t/s), gate PASS. nsys on S32
+showed the CPU `dist` sampler over the 201k vocabulary at 1.1 ms per token with the GPU idle. With the model card
+sampling (top-k 0, top-p 1, min-p 0, temp 1) every sampler of the chain is empty or runs on the backend. The server
+falls back to the CPU for grammar (tool calls with a grammar), a reasoning budget and `n_probs`; seeds draw other
+tokens than on the CPU.
+
+Rejected the same day: S32 + `LLAMA_MOE_CACHE_ASYNC_FILL=1` (expert uploads off the device stream, all misses on the
+CPU): decode 39.06 / 39.23 vs 40.98 / 40.71 (-4.2 %), the CPU part becomes the critical path.
+
 ## Kernel round K1-K7 (2026-11-24, 32k, bench.py, 3 runs interleaved with the previous preset each)
 
 **New best at 32k: S32** = S27 + K1 + K2 + K3 + K4 + K6 (`scripts/inkling/serve.sh start S32`): prefill 958 / 4,724 /
