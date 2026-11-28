@@ -2549,6 +2549,7 @@ struct llama_model_inkling2 : public llama_model_base {
 
         ggml_tensor * inp_out_ids = nullptr;
         ggml_tensor * tau         = nullptr; // log-scaled positions
+        ggml_tensor * zero_sinks  = nullptr; // the zero sink logits, one fill shared by all layers
 
     private:
         // the normalized depth states of blocks[0, n), latest first, shared by every mix over the same blocks

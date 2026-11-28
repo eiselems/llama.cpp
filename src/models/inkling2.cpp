@@ -406,7 +406,10 @@ ggml_tensor * llama_model_inkling2::graph::build_layer(int il, int ip, ggml_tens
         table = ggml_sub(ctx0, table, sinks);
         table = ggml_cont(ctx0, ggml_permute(ctx0, table, 1, 0, 2, 3));
 
-        sinks = ggml_fill(ctx0, ggml_new_tensor_1d(ctx0, GGML_TYPE_F32, n_head), 0.0f);
+        if (zero_sinks == nullptr || zero_sinks->ne[0] != n_head) {
+            zero_sinks = ggml_fill(ctx0, ggml_new_tensor_1d(ctx0, GGML_TYPE_F32, n_head), 0.0f);
+        }
+        sinks = zero_sinks;
 
         cur = build_attn(inp,
                 nullptr, nullptr, nullptr,
