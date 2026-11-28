@@ -506,6 +506,9 @@ struct llama_moe_cache::impl {
 
     float    cpu_share = 0.0f;
     uint32_t cpu_share_q = 0; // cpu_share in 1/65536, integer so that a simulator can reproduce the rounding
+    // LLAMA_MOE_CACHE_CPU_SHARE_HEAD=N:S: the first N layers use CPU share S (layers with little reuse upload less)
+    int32_t  head_n       = 0;
+    uint32_t head_share_q = 0;
     int32_t  n_zero    = 0; // zero slots per group
 
     // LLAMA_MOE_CACHE_DEDUP: layers that share their expert tensors (the passes of a looped layer) share one cache entry per expert
@@ -663,6 +666,14 @@ struct llama_moe_cache::impl {
 
         // within a device the budget is split by the size of the experts, so each group caches the same fraction of its experts
         cpu_share_q = (uint32_t) std::lround(cpu_share*65536.0f);
+        if (const char * v = getenv("LLAMA_MOE_CACHE_CPU_SHARE_HEAD"); v != nullptr && cpu_share > 0.0f) {
+            const char * c = strchr(v, ':');
+            if (c != nullptr) {
+                head_n       = std::max(0, atoi(v));
+                head_share_q = (uint32_t) std::lround(std::clamp((float) atof(c + 1), 0.0f, 1.0f)*65536.0f);
+                LLAMA_LOG_INFO("%s: CPU share %.2f for the first %d layers\n", __func__, head_share_q/65536.0, head_n);
+            }
+        }
         if (const char * path = getenv("LLAMA_MOE_CACHE_TRACE"); path != nullptr && *path != '\0') {
             trace = fopen(path, "wb");
             if (trace == nullptr) {
@@ -1084,7 +1095,7 @@ struct llama_moe_cache::impl {
         }
 
         // part of the misses is computed on the CPU once the cache is full, the carry keeps the share right on average
-        const uint32_t share_q = has_cpu && g.lru.n_filled == g.lru.n_slots ? cpu_share_q : 0;
+        const uint32_t share_q = has_cpu && g.lru.n_filled == g.lru.n_slots ? (il < head_n ? head_share_q : cpu_share_q) : 0;
         auto n_cpu = [&](size_t n_miss) {
             const uint64_t acc = (uint64_t) n_miss*share_q + l.cpu_acc;
             l.cpu_acc = acc & 0xffff;
