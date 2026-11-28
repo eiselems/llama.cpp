@@ -477,6 +477,10 @@ struct llama_moe_cache::impl {
     std::vector<pending_fill> pending;
     bool async_fill = false;
     size_t n_async_fill = 0;
+    // LLAMA_MOE_CACHE_ZERO_COPY=1: the slot maps live in pinned host memory, the device reads them in place (no upload)
+    bool zero_copy = false;
+    ggml_backend_buffer_ptr zc_buf;
+    size_t zc_stride = 0;
 
     // LLAMA_MOE_CACHE_PREDICT=N: in decode, up to N experts that the next layer application is predicted to select (its
     // router on this application's router input, see build_moe_ffn) are uploaded in the background; a background fill
@@ -545,6 +549,9 @@ struct llama_moe_cache::impl {
             throw std::runtime_error("MoE cache requires a MoE model");
         }
 
+        if (const char * v = getenv("LLAMA_MOE_CACHE_ZERO_COPY"); v != nullptr && atoi(v) != 0) {
+            zero_copy = true;
+        }
         if (const char * v = getenv("LLAMA_MOE_CACHE_ASYNC_FILL"); v != nullptr && atoi(v) != 0) {
             async_fill = true;
         }
@@ -869,6 +876,30 @@ struct llama_moe_cache::impl {
         fwrite(ids.data(), sizeof(int32_t), ids.size(), trace);
     }
 
+    // LLAMA_MOE_CACHE_ZERO_COPY: copy the map into this layer's pinned area and let dst read it there
+    // (the area of a layer is written again only by the next copy of the same layer, after the device read it)
+    bool zero_copy_map(ggml_backend_t backend, int32_t il, ggml_tensor * dst, const void * data, size_t size) {
+        if (!zero_copy) {
+            return false;
+        }
+        if (!zc_buf) {
+            ggml_backend_buffer_type_t hb = ggml_backend_dev_host_buffer_type(ggml_backend_get_device(backend));
+            zc_stride = GGML_PAD(size, 256);
+            if (hb == nullptr || (zc_buf.reset(ggml_backend_buft_alloc_buffer(hb, zc_stride*layers.size())), !zc_buf)) {
+                LLAMA_LOG_WARN("%s: no pinned host buffer, slot maps are uploaded\n", __func__);
+                zero_copy = false;
+                return false;
+            }
+        }
+        if (size > zc_stride) {
+            return false;
+        }
+        uint8_t * p = (uint8_t *) ggml_backend_buffer_get_base(zc_buf.get()) + (size_t) il*zc_stride;
+        memcpy(p, data, size);
+        dst->data = p;
+        return true;
+    }
+
     ~impl() {
         log_stats();
         if (n_async_fill > 0) {
@@ -1187,7 +1218,9 @@ struct llama_moe_cache::impl {
         // synchronizes before plan() changes it, so this upload has completed before the data changes)
         // relies on ggml_backend_synchronize above (ids read-back) completing the previous slot map upload
         // of the key layer before plan() changes its data; a pageable-memory H2D copy may also be staged at once
-        ggml_backend_tensor_set_async(backend, dst, g.lru.slot_map[il], 0, ggml_nbytes(l.slot_map));
+        if (!zero_copy_map(backend, il, dst, g.lru.slot_map[il], ggml_nbytes(l.slot_map))) {
+            ggml_backend_tensor_set_async(backend, dst, g.lru.slot_map[il], 0, ggml_nbytes(l.slot_map));
+        }
 
         // predicted experts of the next application: upload the uncached ones in the background, after the slot map,
         // so that this layer's own uploads do not wait behind them in the copy engine (the slot map data is staged at once,
