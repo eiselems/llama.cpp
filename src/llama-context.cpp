@@ -792,6 +792,9 @@ void llama_context::sched_new(const sched_params & params) {
         if (const char * k = getenv("LLAMA_EXPERT_PREFETCH_SKIP"); k != nullptr && atoi(k) != 0) {
             prefetch.skip = true;
         }
+        if (const char * k = getenv("LLAMA_EXPERT_PREFETCH_INPLACE"); k != nullptr && atoi(k) != 0 && !prefetch.single) {
+            prefetch.inplace = true;
+        }
     }
 
     sched_params_cur = params;
@@ -3375,6 +3378,9 @@ bool llama_context::expert_prefetch_init(ggml_backend_t backend) {
     if (!p.buf) {
         return fail("cannot allocate the staging slots");
     }
+    if (p.inplace) {
+        ggml_backend_buffer_clear(p.buf, 0); // the matmuls read the slot padding, no NaNs in it
+    }
     ggml_init_params ip = { /*.mem_size =*/ 64*ggml_tensor_overhead(), /*.mem_buffer =*/ nullptr, /*.no_alloc =*/ true };
     p.ctx = ggml_init(ip);
     for (auto & s : p.slots) {
@@ -3446,10 +3452,67 @@ void llama_context::expert_prefetch_serve_runs(ggml_backend_t backend, const ggm
     }
 }
 
+// uploads the experts of host tensor next into slot si on the copy stream, after the slot was released
+void llama_context::expert_prefetch_upload(int si, const ggml_tensor * next) {
+    auto & p = prefetch;
+    auto & s = p.slots[si];
+    ggml_tensor * v = expert_prefetch_view(si, next);
+    if (v != nullptr) {
+        if (s.has_released) {
+            ggml_backend_event_wait(p.copy, s.released);
+        }
+        if (!p.skip || !moe_cache) {
+            ggml_backend_tensor_set_async(p.copy, v, next->data, 0, ggml_nbytes(next));
+            s.have.assign(next->ne[2], 1);
+        } else {
+            const int64_t n_exp = next->ne[2];
+            const size_t  esz   = next->nb[2];
+            s.have.assign(n_exp, 0);
+            for (int64_t e = 0; e < n_exp; ) {
+                if (moe_cache->has_expert(next, e)) {
+                    e++;
+                    continue;
+                }
+                int64_t n = 1;
+                while (e + n < n_exp && !moe_cache->has_expert(next, e + n)) {
+                    n++;
+                }
+                ggml_backend_tensor_set_async(p.copy, v, (const uint8_t *) next->data + e*esz, e*esz, n*esz);
+                std::fill(s.have.begin() + e, s.have.begin() + e + n, 1);
+                e += n;
+            }
+        }
+        ggml_backend_event_record(s.uploaded, p.copy);
+        s.src = next;
+    }
+}
+
 bool llama_context::expert_prefetch_copy(ggml_backend_t backend, const ggml_tensor * src, ggml_tensor * dst, ggml_cgraph * graph) {
     auto & p = prefetch;
     const size_t pos = p.cur.size();
     p.cur.push_back(src);
+
+    if (p.inplace) {
+        // a copy dst that read a slot gets its own memory back, the scheduler may fill it the normal way
+        if (auto it = p.redirected.find(dst); it != p.redirected.end()) {
+            if (dst->data == it->second.second) {
+                dst->data = it->second.first;
+            }
+            p.redirected.erase(it);
+        }
+        // the previous split, which reads its slot in place, is queued now: release the slot and fill it again
+        if (p.inplace_slot >= 0) {
+            const int ps = p.inplace_slot;
+            p.inplace_slot = -1;
+            ggml_backend_event_record(p.slots[ps].released, backend);
+            p.slots[ps].has_released = true;
+            if (p.deferred[ps] != nullptr) {
+                const ggml_tensor * next = p.deferred[ps];
+                p.deferred[ps] = nullptr;
+                expert_prefetch_upload(ps, next);
+            }
+        }
+    }
     if (getenv("LLAMA_EXPERT_PREFETCH_TRACE")) {
         const ggml_tensor * want = pos < p.order.size() ? p.order[pos] : nullptr;
         LLAMA_LOG_INFO("prefetch-trace pos=%zu src=%s(%p) order[pos]=%s(%p) slot0=%p slot1=%p\n", pos, src->name, (const void *) src,
@@ -3478,13 +3541,38 @@ bool llama_context::expert_prefetch_copy(ggml_backend_t backend, const ggml_tens
         ggml_tensor * v = expert_prefetch_view(si, src);
         if (v != nullptr) {
             ggml_backend_event_wait(backend, s.uploaded);
-            if (!p.skip) {
-                ggml_backend_tensor_copy_async(backend, backend, v, dst);
+            if (p.inplace) {
+                // complete the slot (cached experts, and experts the cache dropped since the prefetch) and read it in place
+                if (p.skip && moe_cache) {
+                    const int64_t n_exp = src->ne[2];
+                    const size_t  esz   = src->nb[2];
+                    for (int64_t e = 0; e < n_exp; ) {
+                        if (e < (int64_t) s.have.size() && s.have[e]) {
+                            e++;
+                            continue;
+                        }
+                        const int64_t n = moe_cache->copy_experts(backend, src, v, e, n_exp - 1);
+                        if (n > 0) {
+                            e += n;
+                            continue;
+                        }
+                        ggml_backend_tensor_set_async(backend, v, (const uint8_t *) src->data + e*esz, e*esz, esz);
+                        p.n_direct++;
+                        e++;
+                    }
+                }
+                p.redirected[dst] = { dst->data, v->data };
+                dst->data = v->data;
+                p.inplace_slot = si; // released at the next copy, after this split's matmul is queued
             } else {
-                expert_prefetch_serve_runs(backend, src, dst, v, s.have);
+                if (!p.skip) {
+                    ggml_backend_tensor_copy_async(backend, backend, v, dst);
+                } else {
+                    expert_prefetch_serve_runs(backend, src, dst, v, s.have);
+                }
+                ggml_backend_event_record(s.released, backend);
+                s.has_released = true;
             }
-            ggml_backend_event_record(s.released, backend);
-            s.has_released = true;
             served = true;
             p.n_hit++;
         }
@@ -3506,34 +3594,10 @@ bool llama_context::expert_prefetch_copy(ggml_backend_t backend, const ggml_tens
         }
     }
     if (next != nullptr) {
-        ggml_tensor * v = expert_prefetch_view(si, next);
-        if (v != nullptr) {
-            if (s.has_released) {
-                ggml_backend_event_wait(p.copy, s.released);
-            }
-            if (!p.skip || !moe_cache) {
-                ggml_backend_tensor_set_async(p.copy, v, next->data, 0, ggml_nbytes(next));
-                s.have.assign(next->ne[2], 1);
-            } else {
-                const int64_t n_exp = next->ne[2];
-                const size_t  esz   = next->nb[2];
-                s.have.assign(n_exp, 0);
-                for (int64_t e = 0; e < n_exp; ) {
-                    if (moe_cache->has_expert(next, e)) {
-                        e++;
-                        continue;
-                    }
-                    int64_t n = 1;
-                    while (e + n < n_exp && !moe_cache->has_expert(next, e + n)) {
-                        n++;
-                    }
-                    ggml_backend_tensor_set_async(p.copy, v, (const uint8_t *) next->data + e*esz, e*esz, n*esz);
-                    std::fill(s.have.begin() + e, s.have.begin() + e + n, 1);
-                    e += n;
-                }
-            }
-            ggml_backend_event_record(s.uploaded, p.copy);
-            s.src = next;
+        if (p.inplace && p.inplace_slot == si) {
+            p.deferred[si] = next; // the slot is read in place by this split, upload once it is released
+        } else {
+            expert_prefetch_upload(si, next);
         }
     }
 

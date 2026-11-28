@@ -448,6 +448,10 @@ private:
         bool failed  = false;
         bool single  = false;  // LLAMA_EXPERT_PREFETCH=3: one staging slot for all expert tensors
         bool skip    = false;  // LLAMA_EXPERT_PREFETCH_SKIP=1: do not upload experts that are in the MoE cache
+        bool inplace = false;  // LLAMA_EXPERT_PREFETCH_INPLACE=1 (two slots): the split reads the experts from the slot, no copy
+        int  inplace_slot = -1;                         // slot read in place by the previous split, released at the next copy
+        const ggml_tensor * deferred[2] = { nullptr, nullptr }; // next tensor to upload into a slot once it is released
+        std::map<ggml_tensor *, std::pair<void *, void *>> redirected; // copy dst -> {its own data, the slot data it reads}
         ggml_context * ctx_run = nullptr; // views for the per-run copies of the skip mode
         ggml_backend_t compute = nullptr;
         ggml_backend_t copy    = nullptr;               // second backend instance on the same device: its own stream
@@ -468,6 +472,7 @@ private:
     bool expert_prefetch_init(ggml_backend_t backend);
     ggml_tensor * expert_prefetch_view(int si, const ggml_tensor * like);
     void expert_prefetch_serve_runs(ggml_backend_t backend, const ggml_tensor * src, ggml_tensor * dst, ggml_tensor * slot, const std::vector<char> & have);
+    void expert_prefetch_upload(int si, const ggml_tensor * next);
 
     // graph reallocations during inference where the backend assignments did not change, split by whether the
     // graph size is the same as the previously scheduled one (unexpected) or different
