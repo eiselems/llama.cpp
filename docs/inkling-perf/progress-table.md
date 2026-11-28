@@ -37,3 +37,4 @@
 | S36 | + sampling on the GPU (--backend-sampling) | `0de686ca7` | 7823 | 820.3 | 1267.0 | 42.58 |  |
 | S37 | + K10 far K/V blocks of the position bias in prefill attention (exact) | `aa67a4377` | 7823 | 838.2 | 1296.0 | 44.28 | 40.11 |
 | S38 | prefill first: S37 + 2 staging slots + experts read in place from the slot | `3e47f40ad` | 7823 | 940.1 | 1448.8 | 42.62 | 37.9 |
+| S39 | + expert copies are the staging slots: 2 slots + in-place reads at the VRAM of 1 slot | `b0b021885` | 7803 | 950.1 | 1443.7 | 43.03 | 37.67 |

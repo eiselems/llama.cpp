@@ -97,6 +97,8 @@ Decode:
 Prefill:
 1. D2D copies (11-13 %): let the matmuls read the staging slot / cache slots in place instead of copying.
    **Done with two slots (S38, prefill first): +6.0 % at 4.7k, +6.4 % at 25.7k; with one slot not possible.**
+   **S39: the copies are the slots, compute buffer 1061 -> 662 MiB: two slots at no cost to the MoE cache; vs S37
+   prefill +13.5 % at 4.7k, +11.4 % at 25.7k, decode +1.6 %.**
 2. 4.7k: 0.64 s of the device stream waiting for uploads with one staging slot.
 3. 29k: flash attention (5.2 s). **K10 (S37): the global layers' far K/V blocks use one bias value per row, -36 % of
    their attention time at 30k, +4.0 % prefill at 25.7k, exact.**

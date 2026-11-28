@@ -7,6 +7,41 @@ greedy correctness gate, long-context needle check, control/candidate/control in
 checks are recorded. Full experiment log and status: [PLAN.md](PLAN.md); ceilings: [THEORY.md](THEORY.md), re-measured on S32 in
 [THEORY-v2.md](THEORY-v2.md).
 
+## S39: the expert copies are the staging slots (2026-11-28, 32k, bench.py --long 32768, 2 rounds of S37 / S38 / S39)
+
+**New best at 32k: S39** (`scripts/inkling/serve.sh start S39`, default of `~/startInkling@32k.sh`): prefill as fast as
+the prefill-first S38 and decode at least as fast as the decode-first S37, so one preset for both.
+
+S38 already reads the experts of a prefill split from its staging slot, but the compute buffer still reserved room for
+a copy of the largest expert tensor. `ggml_backend_sched_set_place_callback` lets the application place the copy of a
+host weight in memory it owns, which the graph allocator then neither allocates nor reserves;
+`LLAMA_EXPERT_PREFETCH_PLACE=1` places the copies of the fused gate_up and down expert tensors in their slots. A copy
+filled the normal way (small batches, first ubatch, prefetch miss) waits for any upload into its slot and keeps the
+slot until its split is queued.
+
+| VRAM (MiB) | S37 | S38 | **S39** |
+|---|---:|---:|---:|
+| MoE cache | 3,001 | 2,653 | **3,048** |
+| staging slots | 688 | 688 + 344 | 688 + 344 |
+| compute buffer | 1,061 | 1,061 | **662** |
+
+| same session, 2 rounds | S37 | S38 | **S39** | S39 vs S37 |
+|---|---:|---:|---:|---:|
+| decode | 42.36 | 41.58 | **43.03** | +1.6 % |
+| prefill 958 tok | 816 | 917 | **950** | +16 % |
+| prefill 4,724 tok | 1,272 | 1,424 | **1,444** | +13.5 % |
+| prefill 25.7k tok | 1,469 | 1,628 | **1,636** | +11.4 % |
+| decode after 25.7k | 37.63 | 36.62 | 37.67 | same |
+
+Same results: wikitext PPL 6.2671 (4 chunks, ub 512) with S37, S38 and S39 settings; gate PASS and retrieval 3/3 in
+all runs. This session ran slower than the S37 row of the chart (S37 decode 42.4 here vs 44.3), so the chart shows S39
+decode below S37; side by side it is 1.6 % above.
+
+The first attempt of this benchmark froze the machine: at the switch from the S37 to the S38 server, VRAM and then RAM
+ran out (kernel: NVKMS allocation failures, kswapd page allocation failures, OOM killer) and the machine had to be
+reset. The rerun started each server in a `systemd-run --user --scope -p MemoryMax=20G -p MemorySwapMax=0` scope only
+after the previous server was gone and RAM and VRAM were back at their baseline, with a kernel-log watchdog.
+
 ## Prefill reads the experts in place; decode launch gaps (2026-11-28, 32k, bench.py, 2 pairs each)
 
 **Prefill first at 32k: S38** = S37 + two staging slots (`LLAMA_EXPERT_PREFETCH=1`) + `LLAMA_EXPERT_PREFETCH_INPLACE=1`
