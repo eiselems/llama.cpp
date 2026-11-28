@@ -4,9 +4,10 @@ RTX 3070 8 GB, Ryzen 5 5600X, 32 GB RAM. Unsloth `Inkling-2-Mini-UD-Q4_K_M`, 32k
 Rows S0-S12: `scripts/inkling-bench.sh` (one repeated prompt, 128 tokens, single sample). Rows from B10 on:
 `scripts/inkling/bench.py` (vendored from sybil-solutions/inference-optimisation-skill; median of 6 decode prompts,
 greedy correctness gate, long-context needle check, control/candidate/control interleaving). Only rows that pass the
-checks are recorded. Full experiment log and status: [PLAN.md](PLAN.md); ceilings: [THEORY.md](THEORY.md).
+checks are recorded. Full experiment log and status: [PLAN.md](PLAN.md); ceilings: [THEORY.md](THEORY.md), re-measured on S32 in
+[THEORY-v2.md](THEORY-v2.md).
 
-## Decode fusion and upload overlap (2026-11-28, 32k, on S36)
+## Decode fusion, upload overlap, per-layer cache budget (2026-11-28, 32k, on S36)
 
 No new best; S36 stays the 32k preset. The decode ceilings were re-measured with nsys first (2026-11-27): hit rate
 77 %, ~63 CPU misses per token, uploads in ~21 of the 48 layer applications, 96 graph launches per token.
@@ -16,6 +17,7 @@ No new best; S36 stays the 32k preset. The decode ceilings were re-measured with
 | K8 | topk-moe also fuses the router weight norm when it is `sum + eps` (SCALE) instead of a CLAMP, as in Inkling (`GGML_CUDA_TOPK_MOE_NORM_EPS=1`) | decode 43.04 vs 42.83 (3 pairs bench.py: 43.31 / 43.02 / 42.79 vs 42.95 / 42.59 / 42.95), **+0.5 %, inside noise**; not in a preset | gate PASS |
 | K9 | one zero-sinks fill shared by all layers instead of one per layer (graph cleanup) | not measured on its own (one tiny kernel per layer) | yes |
 | O1 | split-fill overlap: in decode, this token's expert uploads run on the fill stream while the cached experts compute; the uploaded experts run after the CPU part, in the same device split (no extra graph launch). mmvq treats id -1 as a zero row (`LLAMA_MOE_CACHE_SPLIT_FILL=1`, implies `LLAMA_MOE_CACHE_NEG_IDS=1`; branch `inkling-try-split-fill`, d028b9f88) | **rejected, -2.5 %**: decode 43.27 vs 44.40 / 44.46 (CPU share 0.7); share 0.6 / 0.5 / 0.3: 42.79 / 42.95 / 39.79 (control at 0.5: 41.67). `NEG_IDS` alone: 44.27 (neutral) | yes (greedy text identical) |
+| O2 | per-layer CPU share: layers 0-5 (hit 52 %, little reuse) upload less, so their uploads stop evicting experts the loop layers reuse (`LLAMA_MOE_CACHE_CPU_SHARE_HEAD=6:0.95`; branch `inkling-try-cpu-share-head`, 166a57d9c) | **rejected, -1.3 %**: decode 43.55 vs 44.13 (3 pairs bench.py: 43.14 / 43.88 / 43.64 vs 44.47 / 43.77 / 44.16), prefill the same | gate PASS |
 
 O1 numbers: median of 3 decodes of 512 tokens (model card sampling), not bench.py, so not comparable to the chart.
 A microbench (real MUL_MAT_ID, IQ4_NL, Inkling shapes) had predicted +4-6 %: an upload on a second stream slows the
@@ -27,8 +29,17 @@ cached-expert GEMVs by only ~6 %. In the server it lost, because (nsys):
   48 layer applications per token without uploads;
 - a lower CPU share moves the work back onto PCIe.
 
-Decode is now bound by the CPU experts in miss-heavy layers, and the CPU kernel already runs at RAM speed (K7). The
-lever left is fewer misses: layers 0-5 hit only 52 %.
+Decode is now bound by the CPU experts in miss-heavy layers, and the CPU kernel already runs at RAM speed (K7).
+
+O2 came from a trace replay (`scripts/inkling/moe-budget-sim.py`, S32 decode trace, 3,275 tokens; the unchanged
+policy gives 75.9 % hit, as measured). It ranked share 0.95 for layers 0-5 best (-0.68 ms of misses per token), but
+it added upload and CPU time. In the server the uploads of a layer run while its CPU experts compute, so a layer
+costs about max(upload, CPU). In layers 0-5 the CPU part (~2.6 experts, ~245 us) already hides the ~1 upload
+(~195 us), and moving it to the CPU only makes the CPU part longer. With the max cost (the `max` column) the uniform
+share 0.7 is already best (7.73 ms per token; 0.95 for layers 0-5: 8.15, the A/B direction). The only gain left is
+evicting layers 0-5 earlier (score weight 8: 7.58 ms, ~+0.6 %, inside noise; not built). The cache policy is close to
+optimal for this cache size; the levers left are a larger cache (more VRAM) or smaller experts (lower-bit quant,
+needs the quality evals).
 
 ## Sampling on the GPU (2026-11-27, 32k, bench.py, 2 pairs interleaved)
 
