@@ -19,6 +19,9 @@ checks are recorded. Full experiment log and status: [PLAN.md](PLAN.md); ceiling
 | D1 | decode: nsys on S32 shows all 96 CUDA graphs per token start on an idle GPU, ~16 us after `cudaGraphLaunch` (1.5 ms per token, ~6.7 %) | graphs off (`GGML_CUDA_DISABLE_GRAPHS=1`): 40.8 vs 44.1 (-7.5 %) | - |
 | D2 | run the first K nodes of each graph as plain launches, capture the rest (`GGML_CUDA_GRAPH_EAGER=K`; branch `inkling-try-graph-eager`, 4fdb85002) | **rejected, -1.5 %**: K = 2 / 4: 43.55 / 43.55 vs 44.20; the first kernels are too short to hide the launch | yes |
 
+| D3 | custom decode path, prototype first (`scripts/inkling/decode_proto.cu` on branch `inkling-try-zero-copy`): one decode token of 48 layer applications with the S32 timings, host-driven as now vs GPU-driven (work queued a layer ahead, the GPU waits on flags in pinned memory, `cuStreamWaitValue32`) | GPU-driven **no gain** (32.8 vs 32.7 ms per token); without the 4 small copies per layer both ~10 % faster | - |
+| D4 | zero copy of the small host -> device tensors: CPU results <= 1 MiB in pinned memory read in place (`GGML_SCHED_ZERO_COPY=1`), slot maps in a pinned per-layer area (`LLAMA_MOE_CACHE_ZERO_COPY=1`); branch `inkling-try-zero-copy`, 07cef1d93 | **rejected, +0.9 % (noise)**: 40.32 -> 40.66 t/s (3 pairs on S37), the 73,728 B and 512 B uploads are gone (nsys), the server overlaps them with the CPU experts | yes (greedy output identical) |
+
 In place needs two slots: with one slot (S37) the next upload would wait for the matmul that reads the slot. The
 decode gaps are a host round trip per layer application (router ids -> plan -> uploads -> graph launch), which the
 CPU experts need; removing them means a design without per-layer host decisions.

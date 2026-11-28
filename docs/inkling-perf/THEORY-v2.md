@@ -88,7 +88,8 @@ Decode:
 3. Small kernels (5.35 ms) and driver gaps (2.85 ms): fusion and fewer graph splits/syncs. Graph launches: ~16 us
    each, 96 per token (1.5 ms); graphs off -7.5 %, eager first nodes -1.5 % (rejected). **K8 router norm fusion
    +0.5 % (noise)**; the fusion candidates left are ~0.3-1 % each. Fewer splits/syncs: blocked by the per-layer host
-   round trip the CPU experts need.
+   round trip the CPU experts need. A GPU-driven loop (prototype) and zero copy of the small tensors (+0.9 %) do
+   not help: the per-layer CPU expert work, not the orchestration, sets the pace.
 4. Layers 0-5 hit only 52 % with little reuse between tokens (27 %): a cache policy question (simulator).
    **Rejected (O2, -1.3 %)**: a layer costs max(upload, CPU), not the sum, and with that cost the uniform CPU share
    0.7 is already best (`scripts/inkling/moe-budget-sim.py`). Left: a larger cache or smaller experts.
