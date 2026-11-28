@@ -34,3 +34,4 @@
 | S30 | + K3 sinks subtracted in the attention kernels (exact) | `b2d1c04ba` | 7782 | 829.9 | 1220.1 | 41.40 | 38.0 |
 | S31 | + K4 fused expert SiTU in prefill (exact) | `b1805749b` | 7782 | 832.8 | 1288.1 | 41.42 | 39.15 |
 | S32 | + K6 q8_1 input reuse in decode (exact) | `bf030eb61` | 7782 | 843.6 | 1291.3 | 41.81 | 39.68 |
+| S36 | + sampling on the GPU (--backend-sampling) | `0de686ca7` | 7823 | 820.3 | 1267.0 | 42.58 |  |
