@@ -94,4 +94,5 @@ Decode:
 Prefill:
 1. D2D copies (11-13 %): let the matmuls read the staging slot / cache slots in place instead of copying.
 2. 4.7k: 0.64 s of the device stream waiting for uploads with one staging slot.
-3. 29k: flash attention (5.2 s).
+3. 29k: flash attention (5.2 s). **K10 (S37): the global layers' far K/V blocks use one bias value per row, -36 % of
+   their attention time at 30k, +4.0 % prefill at 25.7k, exact.**

@@ -7,6 +7,26 @@ greedy correctness gate, long-context needle check, control/candidate/control in
 checks are recorded. Full experiment log and status: [PLAN.md](PLAN.md); ceilings: [THEORY.md](THEORY.md), re-measured on S32 in
 [THEORY-v2.md](THEORY-v2.md).
 
+## Long-prompt attention: K10 (2026-11-28, 32k, bench.py --long 32768, 3 runs interleaved with S36)
+
+**New best at 32k: S37** = S36 + K10 (`scripts/inkling/serve.sh start S37`): prefill of a 25,654-token prompt
+**1,485** t/s vs S36 1,427 (**+4.0 %**), prefill 958 / 4,724 tokens 838 / 1,296 (S36 835 / 1,290), decode 44.3 (S36
+44.3), decode after the long prompt 40.1 (S36 38.7, noise: K10 does not touch decode). Gate PASS and retrieval 3/3 in
+all runs. Bit-identical.
+
+nsys of a 29k prefill on S32 had flash attention at 5.08 s of 21.8 s, 3.11 s of it in the 8 global layer applications
+per token (layers 5, 11, 17, 23; the loop runs 11 and 17 three times). The kernel added the relative-position bias
+per score: two position loads, the bin, a table gather and the sink subtraction. A cell at least n_bins - 1 = 1,024
+positions behind the query is always in the last bin, so for most of a long prompt the bias is one value per query
+row.
+
+| step | change (env) | result | exact? |
+|---|---|---|---|
+| K10 = S37 | a pre-kernel (`flash_attn_positions_to_KV_far`) finds per query tile the leading K/V blocks that are visible and >= 1,024 positions behind every query; the MMA kernel skips the mask load and the per-score bias there and adds one value per row (`GGML_CUDA_FATTN_BIAS_FAR=1`) | global-layer attention, 2,048 queries: 8k cells 14.7 -> 9.7 ms, 30k 55.8 -> 35.5 ms, 64k / 96k (K/V chunks) 119 -> 76 / 181 -> 113 ms (-34 to -37 %); server prefill at 25.7k **+4.0 %**, larger with longer prompts | yes: outputs byte-identical (cmp), also with empty cells and K/V chunks |
+
+An empty cell early in the K/V cache ends the far range of a tile there (exact, only slower); a single sequence filled
+from the start has none. The chart has no long-prompt line, so K10 shows there only as a small step.
+
 ## Decode fusion, upload overlap, per-layer cache budget (2026-11-28, 32k, on S36)
 
 No new best; S36 stays the 32k preset. The decode ceilings were re-measured with nsys first (2026-11-27): hit rate
