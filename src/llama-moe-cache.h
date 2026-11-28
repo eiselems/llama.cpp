@@ -26,6 +26,8 @@ struct llama_moe_cache_lookup {
     int32_t       il      = -1;
     ggml_tensor * slots   = nullptr; // [n_expert_used, n_tokens] slots of the selected experts in the MoE cache, nullptr if the layer does not read the cache
     ggml_tensor * cpu_ids = nullptr; // [n_expert_used, n_tokens] misses computed from the host experts, -1 for the other experts, or nullptr
+    ggml_tensor * fill_map = nullptr; // LLAMA_MOE_CACHE_SPLIT_FILL: host slot map of the experts uploaded for this token, or nullptr
+    ggml_tensor * ids      = nullptr; // [n_expert_used*n_tokens] selected experts, the rows that fill_map is looked up with
 };
 
 // builds the experts selected by mm_ids up to the down projection, from the MoE cache if cached: [n_embd, n_expert_used, n_tokens]
