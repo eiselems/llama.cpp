@@ -34,6 +34,7 @@ struct fattn_indexed_bias {
     const float * sinks;         // ggml_flash_attn_ext_add_bias_sinks: per-query sinks subtracted from the table entries, nullptr if unused
     int64_t sinks_s_head;        // their strides in elements
     int64_t sinks_s_query;
+    const int * kv_far = nullptr; // GGML_CUDA_FATTN_BIAS_FAR: per query tile, K/V blocks [0, kv_far) are visible and >= n_bins - 1 cells behind every query
 };
 
 static __device__ __forceinline__ float fattn_bias_table(const fattn_indexed_bias & bias, const int64_t query, const int bin, const int head) {
@@ -888,6 +889,52 @@ static __global__ void flash_attn_positions_to_KV_max(const int32_t * positions,
     }
 }
 
+// GGML_CUDA_FATTN_BIAS_FAR: per query tile the number of leading K/V blocks whose cells are all visible and at least
+// extent = n_bins - 1 positions behind every query of the tile. There the mask is 0 and every cell is in the last bias
+// bin, so the bias is one value per query row (see flash_attn_ext_f16_bias_far).
+template <int ncols1>
+__launch_bounds__(FATTN_KQ_STRIDE/2, 1)
+static __global__ void flash_attn_positions_to_KV_far(
+        const int32_t * positions, int * KV_far, const int n_cols, const int ne01, const int col0, const int n_chunk, const int nbatch_fa, const int extent) {
+    const int ne31     = gridDim.x;
+    const int sequence = blockIdx.y;
+    const int jt       = blockIdx.x;
+
+    const int32_t * pc = positions + (int64_t) (2*sequence + 0)*n_cols + col0;
+    const int32_t * pq = positions + (int64_t) (2*sequence + 1)*n_cols;
+
+    __shared__ int first_near_s;
+    if (threadIdx.x == 0) {
+        first_near_s = n_chunk;
+    }
+    ggml_cuda_pdl_sync();
+    __syncthreads();
+
+    int pq_min = INT_MAX;
+#pragma unroll
+    for (int j = 0; j < ncols1; ++j) {
+        const int q = jt*ncols1 + j;
+        if (q < ne01) {
+            pq_min = min(pq_min, pq[q]);
+        }
+    }
+
+    // the first cell that is masked or nearer than extent; each thread visits its cells in ascending order
+    int first_near = n_chunk;
+    for (int k = threadIdx.x; k < n_chunk; k += blockDim.x) {
+        if (pc[k] < 0 || (int64_t) pq_min - pc[k] < extent) {
+            first_near = k;
+            break;
+        }
+    }
+    atomicMin(&first_near_s, first_near);
+    __syncthreads();
+
+    if (threadIdx.x == 0) {
+        KV_far[sequence*ne31 + jt] = first_near_s / nbatch_fa;
+    }
+}
+
 // GGML_CUDA_FATTN_KV_WINDOW: the K/V blocks of nbatch_fa cells that a query tile has to visit, from the mask:
 // {first visible block, last visible block + 1, begin and end of the longest fully masked run in between}.
 // Fully masked blocks add exactly nothing (exp(-inf) = 0, the running max is unchanged), the kernel skips the gap and
@@ -1292,6 +1339,7 @@ void launch_fattn_impl(const fattn_kv_chunk * ch,
 
     ggml_cuda_pool_alloc<int>    KV_max(pool);
     ggml_cuda_pool_alloc<int4>   KV_window(pool);
+    ggml_cuda_pool_alloc<int>    KV_far(pool);
     ggml_cuda_pool_alloc<float>  dst_tmp(pool);
     ggml_cuda_pool_alloc<float2> dst_tmp_meta(pool);
 
@@ -1453,6 +1501,21 @@ void launch_fattn_impl(const fattn_kv_chunk * ch,
             ggml_cuda_kernel_launch_params launch_params = ggml_cuda_kernel_launch_params(blocks_num_KV_max, block_dim_KV_max, 0, main_stream);
             ggml_cuda_kernel_launch(flash_attn_positions_to_KV_max<ncols1>, launch_params,
                 (const int32_t *) dst->src[7]->data, KV_max.ptr, (int) dst->src[7]->ne[0], (int) Q->ne[1], (int) (ch ? ch->c0 : 0), (int) n_kv_cols);
+            CUDA_CHECK(cudaGetLastError());
+        }
+    }
+
+    // GGML_CUDA_FATTN_BIAS_FAR=1: per query tile the far K/V blocks with a constant bias, see flash_attn_positions_to_KV_far
+    if (mask_pos && dst->src[6] && Q->ne[1] >= 256 && dst->src[6]->ne[1] > 1) {
+        static const bool bias_far_env = [] { const char * e = getenv("GGML_CUDA_FATTN_BIAS_FAR"); return e && atoi(e) != 0; }();
+        if (bias_far_env) {
+            const dim3 blocks_num_f(ntiles_x, Q->ne[3], 1);
+            const dim3 block_dim_f(FATTN_KQ_STRIDE/2, 1, 1);
+            KV_far.alloc(blocks_num_f.x*blocks_num_f.y);
+            ggml_cuda_kernel_launch_params launch_params = ggml_cuda_kernel_launch_params(blocks_num_f, block_dim_f, 0, main_stream);
+            ggml_cuda_kernel_launch(flash_attn_positions_to_KV_far<ncols1>, launch_params,
+                (const int32_t *) dst->src[7]->data, KV_far.ptr, (int) dst->src[7]->ne[0], (int) Q->ne[1], (int) (ch ? ch->c0 : 0),
+                (int) n_kv_cols, nbatch_fa, (int) (dst->src[6]->ne[1] - 1));
             CUDA_CHECK(cudaGetLastError());
         }
     }
@@ -1631,7 +1694,8 @@ void launch_fattn_impl(const fattn_kv_chunk * ch,
                            KV_window.ptr,
                            dst->src[8] ? (const float *) dst->src[8]->data : nullptr,
                            dst->src[8] ? (int64_t) (dst->src[8]->nb[1]/sizeof(float)) : 0,
-                           dst->src[8] ? (int64_t) (dst->src[8]->nb[2]/sizeof(float)) : 0}
+                           dst->src[8] ? (int64_t) (dst->src[8]->nb[2]/sizeof(float)) : 0,
+                           KV_far.ptr}
     );
     CUDA_CHECK(cudaGetLastError());
 

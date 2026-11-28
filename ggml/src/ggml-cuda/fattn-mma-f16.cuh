@@ -642,7 +642,18 @@ struct fattn_mma_bias_ctx {
     int head;
     int gap0 = 0; // GGML_CUDA_FATTN_KV_WINDOW: fully masked K/V blocks [gap0, gap1) that the tile skips
     int gap1 = 0;
+    int far_end = 0; // GGML_CUDA_FATTN_BIAS_FAR: K/V blocks < far_end are visible and in the last bias bin for every query of the tile
 };
+
+// whether K/V block kb takes the far path: no mask load, one bias value per query row
+template <int ncols2>
+static __device__ __forceinline__ bool flash_attn_ext_f16_is_far(const fattn_mma_bias_ctx & bctx, const int kb) {
+#if defined(GGML_USE_HIP)
+    return false;
+#else
+    return ncols2 == 1 && kb < bctx.far_end;
+#endif // defined(GGML_USE_HIP)
+}
 
 // KV chunks: KQ max and rowsum of output column jc of the tile (jc = j*ncols2 + c), as the merge of the chunks needs them
 template <int ncols1, int ncols2>
@@ -666,6 +677,15 @@ static __device__ __forceinline__ float flash_attn_ext_f16_bias(
         }
     }
     return m;
+}
+
+// flash_attn_ext_f16_bias for a far block: mask 0 and the last bin, the same rounding
+static __device__ __forceinline__ float flash_attn_ext_f16_bias_far(const fattn_mma_bias_ctx & bctx, const int jq, const uint3 ne01) {
+    if (jq >= int(ne01.z)) {
+        return 0.0f; // rows past the end are not written
+    }
+    const int64_t query = (int64_t) bctx.sequence*ne01.z + jq;
+    return __half2float(__float2half(0.0f + fattn_bias_table(bctx.bias, query, (int) bctx.bias.n_bins - 1, bctx.head)));
 }
 
 template<int DKQ, int DV, int ncols1, int ncols2, int nwarps,
@@ -740,7 +760,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_iter(
     } else {
         // the sparse mask values are gathered per element, always load them synchronously
         constexpr bool use_cp_async = nstages == 1 && !use_sparse;
-        if (ncols2 > 1 || mask_h) {
+        if ((ncols2 > 1 || mask_h) && !flash_attn_ext_f16_is_far<ncols2>(bctx, kb0)) {
             flash_attn_ext_f16_load_mask<ncols1, nwarps, nbatch_fa, use_cp_async, oob_check, use_sparse>
                 (mask_h, tile_mask, stride_mask, k_VKQ_0, k_VKQ_sup, jt*ncols1, ne01, indices, bctx.bias, bctx.sequence);
         }
@@ -839,8 +859,27 @@ static __device__ __forceinline__ void flash_attn_ext_f16_iter(
     }
     float KQ_rowsum_add[cols_per_thread] = {0.0f};
 
+    const bool far = flash_attn_ext_f16_is_far<ncols2>(bctx, kb0);
+
     if constexpr (cols_per_warp == 8) {
-        if (ncols2 > 1 || mask_h) {
+        if ((ncols2 > 1 || mask_h) && far) {
+            // far block: mask 0, last bin; the row of element l does not depend on i00
+            float far_m[T_C_KQ::ne];
+#pragma unroll
+            for (int l = 0; l < T_C_KQ::ne; ++l) {
+                far_m[l] = flash_attn_ext_f16_bias_far(bctx, jt*ncols1 + ((threadIdx.y / np)*T_C_KQ::J + T_C_KQ::get_j(l)) / ncols2, ne01);
+            }
+#pragma unroll
+            for (int i00 = 0; i00 < nbatch_fa; i00 += np*T_C_KQ::I) {
+                const int i0 = i00 + (threadIdx.y % np)*T_C_KQ::I;
+#pragma unroll
+                for (int l = 0; l < T_C_KQ::ne; ++l) {
+                    const int i = i0 + T_C_KQ::get_i(l);
+                    const float m = !oob_check || i < k_VKQ_sup ? far_m[l] : 0.0f;
+                    KQ_C[i00/(np*T_C_KQ::I)].x[l] += slope * m;
+                }
+            }
+        } else if (ncols2 > 1 || mask_h) {
 #pragma unroll
             for (int i00 = 0; i00 < nbatch_fa; i00 += np*T_C_KQ::I) {
                 const int i0 = i00 + (threadIdx.y % np)*T_C_KQ::I;
@@ -906,6 +945,28 @@ static __device__ __forceinline__ void flash_attn_ext_f16_iter(
             }
         }
     } else { // not Turing mma or T_B_KQ::I > 8
+#if !defined(RDNA3)
+        if ((ncols2 > 1 || mask_h) && far) {
+            // far block: mask 0, last bin; the row of element l0 does not depend on i00
+            float far_m[T_C_KQ::ne/2];
+#pragma unroll
+            for (int l0 = 0; l0 < T_C_KQ::ne; l0 += 2) {
+                far_m[l0/2] = flash_attn_ext_f16_bias_far(bctx, jt*ncols1 + ((threadIdx.y / np)*cols_per_warp + T_C_KQ::get_i(l0)) / ncols2, ne01);
+            }
+#pragma unroll
+            for (int i00 = 0; i00 < nbatch_fa; i00 += np*T_C_KQ::J) {
+                const int i0 = i00 + (threadIdx.y % np)*T_C_KQ::J;
+#pragma unroll
+                for (int l0 = 0; l0 < T_C_KQ::ne; l0 += 2) {
+                    const int i = (i0 + T_C_KQ::get_j(l0)) / 2;
+                    const float mx = !oob_check || 2*i + 0 < k_VKQ_sup ? far_m[l0/2] : 0.0f;
+                    const float my = !oob_check || 2*i + 1 < k_VKQ_sup ? far_m[l0/2] : 0.0f;
+                    KQ_C[i00/(np*T_C_KQ::J)].x[l0 + 0] += slope*mx;
+                    KQ_C[i00/(np*T_C_KQ::J)].x[l0 + 1] += slope*my;
+                }
+            }
+        } else
+#endif // !defined(RDNA3)
         if (ncols2 > 1 || mask_h) {
 #pragma unroll
             for (int i00 = 0; i00 < nbatch_fa; i00 += np*T_C_KQ::J) {
@@ -1100,7 +1161,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_iter(
         cp_async_wait_all();
         __syncthreads();
         if (!last_iter) {
-            if (ncols2 > 1 || mask_h) {
+            if ((ncols2 > 1 || mask_h) && !flash_attn_ext_f16_is_far<ncols2>(bctx, kb0_next)) {
                 flash_attn_ext_f16_load_mask<ncols1, nwarps, nbatch_fa, use_cp_async, oob_check, use_sparse>
                     (mask_h, tile_mask, stride_mask, kb0_next*nbatch_fa, k_VKQ_sup, jt*ncols1, ne01, nullptr, bctx.bias, bctx.sequence);
             }
@@ -1527,7 +1588,7 @@ static __device__ __forceinline__ void flash_attn_ext_f16_process_tile(
         constexpr bool use_cp_async = true;
         constexpr bool oob_check    = false;
         constexpr int  k_VKQ_sup    = nbatch_fa;
-        if (ncols2 > 1 || mask_h) {
+        if ((ncols2 > 1 || mask_h) && !flash_attn_ext_f16_is_far<ncols2>(bctx, kb0)) {
             flash_attn_ext_f16_load_mask<ncols1, nwarps, nbatch_fa, use_cp_async, oob_check, use_sparse>
                 (mask_h, tile_mask, stride_mask, kb0*nbatch_fa, k_VKQ_sup, jt*ncols1, ne01, nullptr, bctx.bias, bctx.sequence);
         }
@@ -2182,6 +2243,9 @@ static __global__ void flash_attn_ext_f16(
         const int kb0_max = rotate && KV_max ? KV_max[sequence*iter_j + jt] / nbatch_fa : iter_k;
         int kb0_rot = rotate ? (kbc - kbc_tile) % iter_k : kb0_start;
         fattn_mma_bias_ctx bctx{bias, sequence, zt_Q};
+        if (bias.kv_far) {
+            bctx.far_end = bias.kv_far[sequence*iter_j + jt];
+        }
         if (!rotate && !use_sparse && bias.kv_window && kb0_start == 0 && kbc + iter_k <= kbc_stop) {
             // whole tile: only the visible K/V blocks, see flash_attn_mask_to_KV_window
             const int4 w = bias.kv_window[sequence*iter_j + jt];
