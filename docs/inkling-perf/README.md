@@ -37,6 +37,18 @@ Same results: wikitext PPL 6.2671 (4 chunks, ub 512) with S37, S38 and S39 setti
 all runs. This session ran slower than the S37 row of the chart (S37 decode 42.4 here vs 44.3), so the chart shows S39
 decode below S37; side by side it is 1.6 % above.
 
+S39 at longer contexts (launchers `~/startInkling@64k.sh` and `@130k.sh`, one run each, guarded):
+
+| | 64k S39 | 130k S39 | 130k S33 (no prefetch, previous default) |
+|---|---:|---:|---:|
+| decode | 42.0 | 39.7 | 42.2 |
+| prefill 958 / 4,724 tok | 923 / 1,421 | 891 / 1,400 | 732 / 1,111 |
+| long prompt | 51k tok: 1,508 | 102k tok: **1,277** (80 s) | 102k tok: 1,083 (95 s) |
+| decode after it | 38.8 | 30.2 | 31.4 |
+
+At 130k the KV cache takes VRAM and the second slot costs MoE cache: S39 prefills 18-26 % faster but generates ~5 %
+slower than S33. The 130k launchers use S39 (long documents, agent sessions); `INKLING_NO_PREFETCH=1` gives S33.
+
 The first attempt of this benchmark froze the machine: at the switch from the S37 to the S38 server, VRAM and then RAM
 ran out (kernel: NVKMS allocation failures, kswapd page allocation failures, OOM killer) and the machine had to be
 reset. The rerun started each server in a `systemd-run --user --scope -p MemoryMax=20G -p MemorySwapMax=0` scope only
