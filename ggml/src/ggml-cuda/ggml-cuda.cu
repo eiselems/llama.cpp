@@ -3540,6 +3540,19 @@ static int ggml_cuda_graph_chunk_size() {
     return chunk_size;
 }
 
+// GGML_CUDA_GRAPH_EAGER=K: the first K nodes of a CUDA graph run as plain launches, also on replay, so the GPU starts
+// a few us after the host instead of after the graph launch latency (~16 us), which then overlaps those kernels
+static int ggml_cuda_graph_eager_nodes(ggml_backend_cuda_context * cuda_ctx, const ggml_cgraph * cgraph) {
+    static const int eager = [] {
+        const char * env = getenv("GGML_CUDA_GRAPH_EAGER");
+        return env != nullptr ? std::max(0, atoi(env)) : 0;
+    }();
+    if (eager == 0 || cgraph->n_nodes <= eager || !cuda_ctx->stream_context().concurrent_events.empty()) {
+        return 0;
+    }
+    return eager;
+}
+
 // end the capture of chunk `idx`, update or create its executable and launch it
 static void ggml_cuda_graph_launch_chunk(ggml_backend_cuda_context * cuda_ctx, ggml_cuda_graph * graph, size_t idx) {
     cudaGraph_t cuda_graph = nullptr;
@@ -5479,6 +5492,8 @@ static void ggml_cuda_graph_evaluate_and_capture(ggml_backend_cuda_context * cud
     const int         chunk_size = ggml_cuda_graph_chunk_size();
     int               chunk_end  = chunk_size;
     size_t            n_chunks   = 0;
+    const int         eager      = use_cuda_graph ? ggml_cuda_graph_eager_nodes(cuda_ctx, cgraph) : 0;
+    bool              capturing  = use_cuda_graph && cuda_graph_update_required && eager == 0; // begun by the caller
 #endif // USE_CUDA_GRAPH
 
     const auto try_launch_concurrent_event = [&](const ggml_tensor * node) {
@@ -5503,7 +5518,12 @@ static void ggml_cuda_graph_evaluate_and_capture(ggml_backend_cuda_context * cud
     while (!graph_evaluated_or_captured) {
         // Only perform the graph execution if CUDA graphs are not enabled, or we are capturing the graph.
         // With the use of CUDA graphs, the execution will be performed by the graph launch.
-        if (!use_cuda_graph || cuda_graph_update_required) {
+#ifdef USE_CUDA_GRAPH
+        const bool run_nodes = !use_cuda_graph || cuda_graph_update_required || eager > 0;
+#else
+        const bool run_nodes = true;
+#endif // USE_CUDA_GRAPH
+        if (run_nodes) {
             [[maybe_unused]] int prev_i = 0;
 
             if (stream_ctx.concurrent_events.size() > 0) {
@@ -5571,9 +5591,17 @@ static void ggml_cuda_graph_evaluate_and_capture(ggml_backend_cuda_context * cud
             for (int i = 0; i < cgraph->n_nodes; i++) {
                 ggml_tensor * node = cgraph->nodes[i];
 #ifdef USE_CUDA_GRAPH
+                if (eager > 0 && i >= eager && !capturing) {
+                    if (!cuda_graph_update_required) {
+                        break; // replay: the rest of the nodes are in the CUDA graph
+                    }
+                    CUDA_CHECK(cudaStreamBeginCapture(cuda_ctx->stream(), cudaStreamCaptureModeRelaxed));
+                    capturing = true;
+                    chunk_end = i + chunk_size;
+                }
                 // fused nodes are skipped together, so a cut never splits a fusion
                 // a concurrent region must join before its capture can end
-                if (use_cuda_graph && chunk_size > 0 && i >= chunk_end && !is_concurrent_event_active) {
+                if (use_cuda_graph && capturing && chunk_size > 0 && i >= chunk_end && !is_concurrent_event_active) {
                     ggml_cuda_graph_launch_chunk(cuda_ctx, graph, n_chunks++);
                     CUDA_CHECK(cudaStreamBeginCapture(cuda_ctx->stream(), cudaStreamCaptureModeRelaxed));
                     chunk_end = i + chunk_size;
@@ -5694,6 +5722,11 @@ static void ggml_cuda_graph_evaluate_and_capture(ggml_backend_cuda_context * cud
 
 #ifdef USE_CUDA_GRAPH
         if (use_cuda_graph && cuda_graph_update_required) { // End CUDA graph capture
+            if (!capturing) {
+                // a fusion of the eager nodes reached the end of the graph: capture an empty graph
+                CUDA_CHECK(cudaStreamBeginCapture(cuda_ctx->stream(), cudaStreamCaptureModeRelaxed));
+                capturing = true;
+            }
             ggml_cuda_graph_launch_chunk(cuda_ctx, graph, n_chunks++);
 
             // drop the chunks left over from a longer graph
@@ -5803,7 +5836,9 @@ static enum ggml_status ggml_backend_cuda_graph_compute(ggml_backend_t backend, 
             ggml_cuda_lock_counter.fetch_add(1, std::memory_order_relaxed);
         }
 
-        CUDA_CHECK(cudaStreamBeginCapture(cuda_ctx->stream(), cudaStreamCaptureModeRelaxed));
+        if (ggml_cuda_graph_eager_nodes(cuda_ctx, cgraph) == 0) {
+            CUDA_CHECK(cudaStreamBeginCapture(cuda_ctx->stream(), cudaStreamCaptureModeRelaxed));
+        } // else the capture begins after the eager nodes
     }
 
     ggml_cuda_graph_evaluate_and_capture(cuda_ctx, cgraph, use_cuda_graph, cuda_graph_update_required, graph_key);
