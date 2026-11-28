@@ -7,6 +7,22 @@ greedy correctness gate, long-context needle check, control/candidate/control in
 checks are recorded. Full experiment log and status: [PLAN.md](PLAN.md); ceilings: [THEORY.md](THEORY.md), re-measured on S32 in
 [THEORY-v2.md](THEORY-v2.md).
 
+## Prefill reads the experts in place; decode launch gaps (2026-11-28, 32k, bench.py, 2 pairs each)
+
+**Prefill first at 32k: S38** = S37 + two staging slots (`LLAMA_EXPERT_PREFETCH=1`) + `LLAMA_EXPERT_PREFETCH_INPLACE=1`
+(`scripts/inkling/serve.sh start S38`, `INKLING_PREFILL_FIRST=1 ~/startInkling@32k.sh`). S37 stays the default
+(decode first).
+
+| step | change (env) | result | exact? |
+|---|---|---|---|
+| P1 = S38 | the split no longer copies all experts of a tensor into its compute-buffer copy: the cached experts are copied into the staging slot, which already holds the uploaded ones, and MUL_MAT_ID reads the slot. The slot is released at the next copy callback, after the split that reads it is queued (`LLAMA_EXPERT_PREFETCH_INPLACE=1`, needs two slots) | vs S37 + two slots: prefill 4.7k **1,367 -> 1,449** (+6.0 %), 25.7k **1,552 -> 1,650** (+6.4 %), 1k same, decode 43.06 -> 42.62 (-1 %, noise: decode does not use the slots). vs S37 (decode first, same day): about **+11 % prefill, -3-4 % decode** (the second slot takes 344 MiB from the MoE cache) | yes: same weights read; gate PASS, retrieval 3/3 |
+| D1 | decode: nsys on S32 shows all 96 CUDA graphs per token start on an idle GPU, ~16 us after `cudaGraphLaunch` (1.5 ms per token, ~6.7 %) | graphs off (`GGML_CUDA_DISABLE_GRAPHS=1`): 40.8 vs 44.1 (-7.5 %) | - |
+| D2 | run the first K nodes of each graph as plain launches, capture the rest (`GGML_CUDA_GRAPH_EAGER=K`; branch `inkling-try-graph-eager`, 4fdb85002) | **rejected, -1.5 %**: K = 2 / 4: 43.55 / 43.55 vs 44.20; the first kernels are too short to hide the launch | yes |
+
+In place needs two slots: with one slot (S37) the next upload would wait for the matmul that reads the slot. The
+decode gaps are a host round trip per layer application (router ids -> plan -> uploads -> graph launch), which the
+CPU experts need; removing them means a design without per-layer host decisions.
+
 ## Long-prompt attention: K10 (2026-11-28, 32k, bench.py --long 32768, 3 runs interleaved with S36)
 
 **New best at 32k: S37** = S36 + K10 (`scripts/inkling/serve.sh start S37`): prefill of a 25,654-token prompt

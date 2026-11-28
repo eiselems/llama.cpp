@@ -85,14 +85,17 @@ Decode:
    experts (split-fill, O1) **rejected, -2.5 %**: the upload layers are already CPU bound.
 2. Sampling (1.10 ms, ~4 %): a faster full-vocabulary dist sampler, or overlap it with the next token's work.
    **Done: `--backend-sampling`, +3.6 % (S36).**
-3. Small kernels (5.35 ms) and driver gaps (2.85 ms): fusion and fewer graph splits/syncs. **K8 router norm fusion
-   +0.5 % (noise)**; the fusion candidates left are ~0.3-1 % each. Fewer splits/syncs: not tried.
+3. Small kernels (5.35 ms) and driver gaps (2.85 ms): fusion and fewer graph splits/syncs. Graph launches: ~16 us
+   each, 96 per token (1.5 ms); graphs off -7.5 %, eager first nodes -1.5 % (rejected). **K8 router norm fusion
+   +0.5 % (noise)**; the fusion candidates left are ~0.3-1 % each. Fewer splits/syncs: blocked by the per-layer host
+   round trip the CPU experts need.
 4. Layers 0-5 hit only 52 % with little reuse between tokens (27 %): a cache policy question (simulator).
    **Rejected (O2, -1.3 %)**: a layer costs max(upload, CPU), not the sum, and with that cost the uniform CPU share
    0.7 is already best (`scripts/inkling/moe-budget-sim.py`). Left: a larger cache or smaller experts.
 
 Prefill:
 1. D2D copies (11-13 %): let the matmuls read the staging slot / cache slots in place instead of copying.
+   **Done with two slots (S38, prefill first): +6.0 % at 4.7k, +6.4 % at 25.7k; with one slot not possible.**
 2. 4.7k: 0.64 s of the device stream waiting for uploads with one staging slot.
 3. 29k: flash attention (5.2 s). **K10 (S37): the global layers' far K/V blocks use one bias value per row, -36 % of
    their attention time at 30k, +4.0 % prefill at 25.7k, exact.**
