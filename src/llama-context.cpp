@@ -794,10 +794,35 @@ void llama_context::sched_new(const sched_params & params) {
         }
         if (const char * k = getenv("LLAMA_EXPERT_PREFETCH_INPLACE"); k != nullptr && atoi(k) != 0 && !prefetch.single) {
             prefetch.inplace = true;
+            if (const char * q = getenv("LLAMA_EXPERT_PREFETCH_PLACE"); q != nullptr && atoi(q) != 0) {
+                prefetch.place = true;
+                ggml_backend_sched_set_place_callback(sched.get(), sched_place_experts, this);
+                if (!model.no_alloc()) {
+                    expert_prefetch_init_early(); // the slots exist before the compute buffers are reserved without the copies
+                }
+            }
         }
     }
 
     sched_params_cur = params;
+}
+
+// allocates the staging slots of the expert prefetch now (single GPU), instead of on first use
+void llama_context::expert_prefetch_init_early() {
+    if (!prefetch.enabled) {
+        return;
+    }
+    ggml_backend_t gpu   = nullptr;
+    int            n_gpu = 0;
+    for (ggml_backend_t b : backend_ptrs) {
+        if (ggml_backend_dev_type(ggml_backend_get_device(b)) == GGML_BACKEND_DEVICE_TYPE_GPU) {
+            gpu = b;
+            n_gpu++;
+        }
+    }
+    if (n_gpu == 1) {
+        expert_prefetch_init(gpu);
+    }
 }
 
 void llama_context::moe_cache_resize_auto() {
@@ -806,19 +831,7 @@ void llama_context::moe_cache_resize_auto() {
     }
 
     // the expert prefetch allocates its staging slots on first use, allocate them now so the cache leaves room for them
-    if (prefetch.enabled) {
-        ggml_backend_t gpu   = nullptr;
-        int            n_gpu = 0;
-        for (ggml_backend_t b : backend_ptrs) {
-            if (ggml_backend_dev_type(ggml_backend_get_device(b)) == GGML_BACKEND_DEVICE_TYPE_GPU) {
-                gpu = b;
-                n_gpu++;
-            }
-        }
-        if (n_gpu == 1) {
-            expert_prefetch_init(gpu);
-        }
-    }
+    expert_prefetch_init_early();
 
     // the free memory of the devices that hold the cache, plus the placeholder cache that is freed below
     size_t avail = 0;
@@ -3452,6 +3465,43 @@ void llama_context::expert_prefetch_serve_runs(ggml_backend_t backend, const ggm
     }
 }
 
+// LLAMA_EXPERT_PREFETCH_PLACE: the copy of a fused gate_up or down expert tensor is its staging slot
+bool llama_context::sched_place_experts(ggml_backend_t backend, const ggml_tensor * src, ggml_tensor * dst, void * user_data) {
+    auto * lctx = static_cast<llama_context *>(user_data);
+    auto & p = lctx->prefetch;
+    if (!p.place || p.failed || p.buf == nullptr || p.compute != backend) {
+        return false;
+    }
+    if (strstr(src->name, "gate_up_exps") == nullptr && strstr(src->name, "down_exps") == nullptr) {
+        return false; // separate gate and up tensors would share the slot of their kind
+    }
+    const int si = expert_prefetch_slot_of(src, p.single);
+    if (ggml_backend_buft_get_alloc_size(ggml_backend_buffer_get_type(p.buf), dst) > p.slots[si].size) {
+        return false;
+    }
+    dst->buffer = p.buf;
+    dst->data   = (uint8_t *) ggml_backend_buffer_get_base(p.buf) + p.slots[si].offset;
+    LLAMA_LOG_DEBUG("%s: %s -> slot %d\n", __func__, src->name, si);
+    return true;
+}
+
+// a placed copy filled the normal way writes its slot: wait for an upload into it, drop that prefetch,
+// and keep the slot until this split is queued (released at the next copy)
+void llama_context::expert_prefetch_claim(ggml_backend_t backend, ggml_tensor * dst) {
+    auto & p = prefetch;
+    if (!p.place || dst->buffer != p.buf) {
+        return;
+    }
+    const uint8_t * base = (const uint8_t *) ggml_backend_buffer_get_base(p.buf);
+    const int si = (const uint8_t *) dst->data == base + p.slots[1].offset && p.slots[1].size > 0 ? 1 : 0;
+    auto & s = p.slots[si];
+    if (s.src != nullptr) {
+        ggml_backend_event_wait(backend, s.uploaded);
+        s.src = nullptr;
+    }
+    p.inplace_slot = si;
+}
+
 // uploads the experts of host tensor next into slot si on the copy stream, after the slot was released
 void llama_context::expert_prefetch_upload(int si, const ggml_tensor * next) {
     auto & p = prefetch;
@@ -3515,7 +3565,7 @@ bool llama_context::expert_prefetch_copy(ggml_backend_t backend, const ggml_tens
     }
     if (getenv("LLAMA_EXPERT_PREFETCH_TRACE")) {
         const ggml_tensor * want = pos < p.order.size() ? p.order[pos] : nullptr;
-        LLAMA_LOG_INFO("prefetch-trace pos=%zu src=%s(%p) order[pos]=%s(%p) slot0=%p slot1=%p\n", pos, src->name, (const void *) src,
+        LLAMA_LOG_INFO("prefetch-trace graph=%p n_nodes=%d pos=%zu src=%s(%p) order[pos]=%s(%p) slot0=%p slot1=%p\n", (void *) graph, ggml_graph_n_nodes(graph), pos, src->name, (const void *) src,
                 want ? want->name : "-", (const void *) want, (const void *) p.slots[0].src, (const void *) p.slots[1].src);
     }
 
@@ -3530,6 +3580,7 @@ bool llama_context::expert_prefetch_copy(ggml_backend_t backend, const ggml_tens
         }
     }
     if (!large || !expert_prefetch_init(backend) || !ggml_is_contiguous(dst) || ggml_nbytes(dst) != ggml_nbytes(src)) {
+        expert_prefetch_claim(backend, dst);
         return false;
     }
 
@@ -3580,6 +3631,7 @@ bool llama_context::expert_prefetch_copy(ggml_backend_t backend, const ggml_tens
     }
     if (!served) {
         p.n_miss++;
+        expert_prefetch_claim(backend, dst);
     }
 
     // prefetch the next tensor of the same kind, as ordered in the previous graph (wrapping to its start)

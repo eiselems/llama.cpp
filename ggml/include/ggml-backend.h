@@ -343,6 +343,10 @@ extern "C" {
     // `graph` is the compute graph of the split
     typedef bool (*ggml_backend_sched_copy_callback)(ggml_backend_t backend, const struct ggml_tensor * src, struct ggml_tensor * dst, struct ggml_cgraph * graph, void * user_data);
 
+    // Callback when the scheduler creates the copy (dst) of a host weight (src) for a split on backend: returns true if it
+    // set dst->buffer and dst->data to memory it owns, which the graph allocator then does not allocate (or reserve)
+    typedef bool (*ggml_backend_sched_place_callback)(ggml_backend_t backend, const struct ggml_tensor * src, struct ggml_tensor * dst, void * user_data);
+
     // Callback when the buffers reserved for a graph are not sufficient and have to be reserved again
     // it happens on the graph allocation path and costs a synchronization of the backends
     // `sched` is the scheduler
@@ -391,6 +395,7 @@ extern "C" {
 
     // Set a callback to be called when the inputs weights of a split are being copied
     GGML_API void                 ggml_backend_sched_set_copy_callback(ggml_backend_sched_t sched, ggml_backend_sched_copy_callback callback, void * user_data);
+    GGML_API void                 ggml_backend_sched_set_place_callback(ggml_backend_sched_t sched, ggml_backend_sched_place_callback callback, void * user_data);
     // in a copy callback: the host copy of tensor (or a contiguous view of it) that the scheduler read for the next split, after
     // waiting for the read; NULL if it was not read
     GGML_API const void *         ggml_backend_sched_get_prefetched(ggml_backend_sched_t sched, const struct ggml_tensor * tensor);
